@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>損益分析レポート</title>
+<style>
+  :root {
+    --serif: "Yu Mincho","YuMincho","Hiragino Mincho ProN","Noto Serif JP",serif;
+    --sans: "Yu Gothic","YuGothic","Hiragino Kaku Gothic ProN","Noto Sans JP","Meiryo",sans-serif;
+    --paper: #f7f4ec;       /* 紙の地色（少し温かい白）*/
+    --panel: #fffdf8;
+    --ink:   #211f1b;       /* 墨 */
+    --sub:   #6f675a;       /* 余白の文字 */
+    --rule:  #d8d0bf;       /* 細罫 */
+    --rule2: #b9ad95;       /* 濃いめの罫 */
+    --accent:#243b56;       /* 紺（差し色・ごく控えめ）*/
+    --pos:   #2f6b40;       /* 益・一致 */
+    --neg:   #9a2b25;       /* 損・不可 */
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: var(--sans); color: var(--ink); background: var(--paper);
+    margin: 0; padding: 40px 18px 64px; line-height: 1.8;
+    font-feature-settings: "palt";
+  }
+  .sheet {
+    max-width: 760px; margin: 0 auto; background: var(--panel);
+    border: 1px solid var(--rule2); padding: 44px 48px 40px;
+    box-shadow: 0 1px 0 var(--rule);
+  }
+  @media (max-width: 620px) { .sheet { padding: 28px 22px; } body { padding: 18px 10px 40px; } }
+
+  /* 題字 */
+  .masthead { text-align: center; border-bottom: 3px double var(--rule2); padding-bottom: 18px; margin-bottom: 10px; }
+  .overline { font-size: 11px; letter-spacing: .42em; color: var(--accent); text-indent: .42em; margin: 0 0 8px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 30px; letter-spacing: .14em; margin: 0; }
+  .meta { margin: 12px 0 0; font-size: 12px; color: var(--sub); letter-spacing: .08em; }
+  .meta span { margin: 0 .55em; }
+
+  /* 章見出し */
+  h2 {
+    font-family: var(--serif); font-weight: 600; font-size: 17px; letter-spacing: .08em;
+    margin: 38px 0 14px; padding-bottom: 7px; border-bottom: 1px solid var(--rule2);
+    display: flex; align-items: baseline; gap: .6em;
+  }
+  h2 .no { font-size: 13px; color: var(--accent); letter-spacing: .1em; }
+  .note { font-size: 12px; color: var(--sub); margin: 8px 0 0; }
+
+  /* 表（台帳風） */
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  th, td { padding: 9px 6px; border-bottom: 1px solid var(--rule); }
+  thead th { color: var(--sub); font-weight: 600; font-size: 11.5px; letter-spacing: .12em; border-bottom: 1px solid var(--rule2); }
+  td.num, th.num { text-align: right; font-family: var(--serif); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+  td.cat { color: var(--sub); font-size: 12.5px; }
+
+  /* 計算ステップ（台帳の仕訳のように） */
+  .stepbar { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; flex-wrap: wrap; }
+  button {
+    font-family: var(--sans); font-size: 13px; letter-spacing: .04em; cursor: pointer;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--rule2);
+    border-radius: 2px; padding: 7px 15px; transition: background .15s;
+  }
+  button:hover:not(:disabled) { background: #f0ead9; }
+  button.primary { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .progress { margin-left: auto; font-size: 12px; color: var(--sub); font-family: var(--serif); letter-spacing: .08em; }
+
+  .step { padding: 15px 2px 15px 16px; border-bottom: 1px solid var(--rule); border-left: 2px solid transparent; }
+  .step.hidden { display: none; }
+  .step .title { font-family: var(--serif); font-weight: 600; font-size: 14.5px; letter-spacing: .06em; }
+  .step .formula { font-size: 12.5px; color: var(--sub); margin-top: 3px; }
+  .step .calc { margin-top: 8px; font-size: 14px; }
+  .calc .eq { color: var(--sub); font-family: var(--serif); font-variant-numeric: tabular-nums; }
+  .calc .res { font-family: var(--serif); font-weight: 700; font-size: 23px; letter-spacing: .02em; color: var(--ink); vertical-align: -1px; }
+  .step.concl { border-left-color: var(--accent); background: #fbf8ef; }
+  .step.concl .res { color: var(--pos); }
+  .step:last-child { border-bottom: none; }
+  .rank-cat { color: var(--sub); font-size: 12px; }
+  .na { color: var(--neg); font-family: var(--serif); }
+
+  /* 検算 */
+  .verify-head { display: flex; align-items: baseline; gap: 12px; }
+  .stamp {
+    font-family: var(--serif); font-size: 12.5px; letter-spacing: .1em; padding: 2px 12px;
+    border: 1px solid currentColor; border-radius: 2px;
+  }
+  .stamp.pass { color: var(--pos); }
+  .stamp.fail { color: var(--neg); }
+  .checks { list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; color: var(--sub); }
+  .checks li { padding: 3px 0; }
+  .mk { font-family: var(--serif); font-weight: 700; margin-right: .5em; }
+  .mk.ok { color: var(--pos); }
+  .mk.ng { color: var(--neg); }
+
+  /* 任意：試算 */
+  details { margin-top: 4px; }
+  summary { cursor: pointer; font-family: var(--serif); font-size: 14px; letter-spacing: .05em; color: var(--accent); }
+  summary::marker { color: var(--rule2); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 16px; }
+  @media (max-width: 620px){ .grid2 { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 12px; color: var(--sub); letter-spacing: .06em; margin: 12px 0 4px; }
+  input {
+    width: 100%; padding: 8px 10px; font-size: 14px; font-family: var(--serif);
+    border: 1px solid var(--rule2); border-radius: 2px; background: #fffefb; color: var(--ink);
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  .result-line { display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--rule); }
+  .result-line .k { font-size: 13px; color: var(--sub); }
+  .result-line .v { font-family: var(--serif); font-variant-numeric: tabular-nums; font-size: 15px; }
+  .result-line.big .v { font-size: 18px; font-weight: 700; }
+
+  footer { max-width: 760px; margin: 18px auto 0; text-align: center; font-size: 11px; color: var(--sub); letter-spacing: .1em; }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="masthead">
+    <p class="overline">ACCOUNTING ANALYSIS</p>
+    <h1>損益分析レポート</h1>
+    <p class="meta"><span>例題データ</span>｜<span>単一期間</span>｜<span>単位：円</span></p>
+  </div>
+
+  <!-- Ⅰ 入力 -->
+  <section>
+    <h2><span class="no">Ⅰ</span> 入力データ</h2>
+    <table>
+      <thead><tr><th>科目</th><th>区分</th><th class="num">金額</th></tr></thead>
+      <tbody id="inputTable"></tbody>
+    </table>
+    <p class="note">実務ではCSVを読み込みます。本レポートは説明のため上記の数値を用いています。</p>
+  </section>
+
+  <!-- Ⅱ 計算過程 -->
+  <section>
+    <h2><span class="no">Ⅱ</span> 計算過程</h2>
+    <div class="stepbar">
+      <button class="primary" id="next">次の項目 ▶</button>
+      <button id="all">全て表示</button>
+      <button id="reset">初めから</button>
+      <span class="progress" id="progress"></span>
+    </div>
+    <div id="steps"></div>
+  </section>
+
+  <!-- Ⅲ 検算 -->
+  <section>
+    <h2><span class="no">Ⅲ</span> 検算</h2>
+    <div class="verify-head">
+      <span id="testBadge" class="stamp"></span>
+      <span class="note" style="margin:0;">独立に定めた既知の期待値と照合しています。</span>
+    </div>
+    <ul class="checks" id="testList"></ul>
+  </section>
+
+  <!-- Ⅳ 任意：試算 -->
+  <section>
+    <h2><span class="no">Ⅳ</span> 任意の試算</h2>
+    <details>
+      <summary>自分の数値で計算する（クリックで展開）</summary>
+      <div class="grid2">
+        <div>
+          <label>売上高</label><input id="i_sales" value="5,000,000">
+          <label>売上原価</label><input id="i_cost" value="3,000,000">
+          <label>営業外収益</label><input id="i_rev" value="50,000">
+          <label>販管費 合計</label><input id="i_sga" value="1,200,000">
+          <label>営業外費用 合計</label><input id="i_exp" value="80,000">
+        </div>
+        <div id="i_out"></div>
+      </div>
+    </details>
+  </section>
+
+</div>
+<footer>損益分析レポート ／ 単一ファイル・外部ライブラリ不使用</footer>
+
+<script>
+"use strict";
+
+// ===== 固定の例題（CSVの sample_data 相当）=====
+const SAMPLE = {
+  sales: 5000000, cost: 3000000, nonopRev: 50000,
+  expenses: [
+    { name: "給料",       kind: "sga",   amount: 700000 },
+    { name: "広告宣伝費", kind: "sga",   amount: 300000 },
+    { name: "地代家賃",   kind: "sga",   amount: 200000 },
+    { name: "支払利息",   kind: "nonop", amount: 80000 },
+  ],
+};
+const NOT_AVAILABLE = "算出不可";
+const KIND_LABEL = { sga: "販管費", nonop: "営業外費用" };
+
+// ===== 計算エンジン（純粋関数：Python版と同じ式）=====
+function ratio(numerator, sales) {
+  if (!(sales > 0)) return NOT_AVAILABLE;            // 売上0以下はゼロ除算せず算出不可
+  return Math.round((numerator / sales) * 1000) / 10;
+}
+function analyze(data) {
+  let sga = 0, nonopExp = 0;
+  for (const e of data.expenses) {
+    if (e.kind === "sga") sga += e.amount; else if (e.kind === "nonop") nonopExp += e.amount;
+  }
+  const grossProfit = data.sales - data.cost;
+  const operatingProfit = grossProfit - sga;
+  const ordinaryProfit = operatingProfit + data.nonopRev - nonopExp;
+  const map = new Map();
+  for (const e of data.expenses) {
+    const k = e.name + " " + e.kind;
+    map.set(k, { name: e.name, kind: e.kind, amount: (map.get(k)?.amount || 0) + e.amount });
+  }
+  const ranking = [...map.values()]
+    .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name))
+    .map(r => ({ ...r, ratio: ratio(r.amount, data.sales) }));
+  return {
+    sga, nonopExp, grossProfit, operatingProfit, ordinaryProfit,
+    ratios: { 売上総利益率: ratio(grossProfit, data.sales), 営業利益率: ratio(operatingProfit, data.sales),
+              原価率: ratio(data.cost, data.sales), 販管費率: ratio(sga, data.sales) },
+    ranking,
+  };
+}
+
+// ===== 表示ヘルパ =====
+const yen = v => "¥" + v.toLocaleString("ja-JP");
+const pct = v => v === NOT_AVAILABLE ? `<span class="na">${NOT_AVAILABLE}</span>` : v.toFixed(1) + "％";
+const sumExpr = arr => arr.map(v => v.toLocaleString("ja-JP")).join(" ＋ ");
+
+// ===== Ⅰ 入力データ表 =====
+(function renderInput() {
+  const rows = [
+    ["売上高", "収益", SAMPLE.sales],
+    ["売上原価", "売上原価", SAMPLE.cost],
+    ...SAMPLE.expenses.map(e => [e.name, KIND_LABEL[e.kind], e.amount]),
+    ["受取利息", "営業外収益", SAMPLE.nonopRev],
+  ];
+  document.getElementById("inputTable").innerHTML = rows.map(
+    r => `<tr><td>${r[0]}</td><td class="cat">${r[1]}</td><td class="num">${yen(r[2])}</td></tr>`).join("");
+})();
+
+// ===== Ⅱ 計算ステップ =====
+const A = analyze(SAMPLE);
+const sgaItems = SAMPLE.expenses.filter(e => e.kind === "sga");
+
+function stepHTML(title, formula, calc, opts = {}) {
+  return `<div class="step hidden${opts.concl ? " concl" : ""}">
+    <div class="title">${title}</div>
+    <div class="formula">${formula}</div>
+    <div class="calc">${calc}</div></div>`;
+}
+
+const STEPS = [
+  stepHTML("一　売上総利益",
+    "売上総利益 ＝ 売上高 − 売上原価",
+    `<span class="eq">${yen(SAMPLE.sales)} − ${yen(SAMPLE.cost)} ＝</span> <span class="res">${yen(A.grossProfit)}</span>`),
+
+  stepHTML("二　営業利益",
+    "販管費 ＝ 給料 ＋ 広告宣伝費 ＋ 地代家賃　／　営業利益 ＝ 売上総利益 − 販管費",
+    `<span class="eq">販管費 ＝ ${sumExpr(sgaItems.map(e => e.amount))} ＝ ${yen(A.sga)}</span><br>
+     <span class="eq">${yen(A.grossProfit)} − ${yen(A.sga)} ＝</span> <span class="res">${yen(A.operatingProfit)}</span>`),
+
+  stepHTML("三　経常利益",
+    "経常利益 ＝ 営業利益 ＋ 営業外収益 − 営業外費用",
+    `<span class="eq">${yen(A.operatingProfit)} ＋ ${yen(SAMPLE.nonopRev)} − ${yen(A.nonopExp)} ＝</span> <span class="res">${yen(A.ordinaryProfit)}</span>`),
+
+  stepHTML("四　利益率",
+    "各利益 ÷ 売上高 × 100（小数第1位）",
+    `<span class="eq">売上総利益率 ＝ ${yen(A.grossProfit)} ÷ ${yen(SAMPLE.sales)} × 100 ＝</span> <span class="res">${pct(A.ratios.売上総利益率)}</span><br>
+     <span class="eq">営業利益率</span> <b>${pct(A.ratios.営業利益率)}</b>
+     <span class="eq">原価率</span> <b>${pct(A.ratios.原価率)}</b>
+     <span class="eq">販管費率</span> <b>${pct(A.ratios.販管費率)}</b>`),
+
+  stepHTML("五　利益圧迫要因",
+    "販管費＋営業外費用を金額の大きい順に並べ、対売上比を付す（売上原価は除く）",
+    `<table style="margin-top:6px;"><thead><tr><th style="width:34px;">順位</th><th>科目</th><th class="num">金額</th><th class="num">対売上比</th></tr></thead>
+     <tbody>${A.ranking.map((it, i) =>
+        `<tr><td>${i + 1}</td><td>${it.name} <span class="rank-cat">（${KIND_LABEL[it.kind]}）</span></td>
+         <td class="num">${yen(it.amount)}</td><td class="num">${pct(it.ratio)}</td></tr>`).join("")}</tbody></table>`),
+
+  stepHTML("結　所見",
+    "本データから読み取れること",
+    `費用のうち最大は <b>${A.ranking[0].name}</b>（対売上比 <span class="res">${pct(A.ranking[0].ratio)}</span>）。
+     利益改善は、まずこの費目の見直しが効果的である。`,
+    { concl: true }),
+];
+
+const stepsEl = document.getElementById("steps");
+stepsEl.innerHTML = STEPS.join("");
+const stepNodes = [...stepsEl.querySelectorAll(".step")];
+let shown = 0;
+const KANSUJI = ["〇", "一", "二", "三", "四", "五", "六"];
+function refresh() {
+  stepNodes.forEach((n, i) => n.classList.toggle("hidden", i >= shown));
+  document.getElementById("progress").textContent = `${KANSUJI[shown] || shown}／${KANSUJI[stepNodes.length] || stepNodes.length}　項目`;
+  document.getElementById("next").disabled = shown >= stepNodes.length;
+}
+document.getElementById("next").addEventListener("click", () => { if (shown < stepNodes.length) shown++; refresh(); });
+document.getElementById("all").addEventListener("click", () => { shown = stepNodes.length; refresh(); });
+document.getElementById("reset").addEventListener("click", () => { shown = 0; refresh(); });
+refresh();
+
+// ===== Ⅲ 検算 =====
+(function selfTest() {
+  const r = analyze(SAMPLE);
+  const checks = [
+    ["売上総利益 ＝ 2,000,000", r.grossProfit === 2000000],
+    ["営業利益 ＝ 800,000", r.operatingProfit === 800000],
+    ["経常利益 ＝ 770,000", r.ordinaryProfit === 770000],
+    ["利益率 40.0／16.0／60.0／24.0", r.ratios.売上総利益率 === 40 && r.ratios.営業利益率 === 16 && r.ratios.原価率 === 60 && r.ratios.販管費率 === 24],
+    ["首位は給料（対売上比 14.0）", r.ranking[0].name === "給料" && r.ranking[0].ratio === 14],
+    ["ランキングに売上原価を含まない", !r.ranking.some(x => x.name === "売上原価")],
+    ["売上0でゼロ除算せず算出不可", analyze({ sales: 0, cost: 100, nonopRev: 0, expenses: [] }).ratios.営業利益率 === NOT_AVAILABLE],
+  ];
+  const ok = checks.every(c => c[1]);
+  const b = document.getElementById("testBadge");
+  b.textContent = ok ? `照合一致 ${checks.length}／${checks.length}` : "不一致あり";
+  b.className = "stamp " + (ok ? "pass" : "fail");
+  document.getElementById("testList").innerHTML = checks.map(
+    c => `<li><span class="mk ${c[1] ? "ok" : "ng"}">${c[1] ? "✓" : "✕"}</span>${c[0]}</li>`).join("");
+})();
+
+// ===== Ⅳ 任意の試算 =====
+function parseYen(raw) {
+  let s = String(raw).normalize("NFKC").trim().replace(/[, 円¥\\\s]/g, "");
+  if (s === "") return 0;
+  return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : null;
+}
+function tryCustom() {
+  const sales = parseYen(i_sales.value) ?? 0, cost = parseYen(i_cost.value) ?? 0,
+        rev = parseYen(i_rev.value) ?? 0, sga = parseYen(i_sga.value) ?? 0, exp = parseYen(i_exp.value) ?? 0;
+  const gp = sales - cost, op = gp - sga, ord = op + rev - exp;
+  const L = (k, v, big) => `<div class="result-line${big ? " big" : ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  i_out.innerHTML =
+    L("売上総利益", yen(gp), true) + L("営業利益", yen(op), true) + L("経常利益", yen(ord), true) +
+    L("売上総利益率", pct(ratio(gp, sales))) + L("営業利益率", pct(ratio(op, sales))) +
+    L("原価率", pct(ratio(cost, sales))) + L("販管費率", pct(ratio(sga, sales)));
+}
+["i_sales", "i_cost", "i_rev", "i_sga", "i_exp"].forEach(id => document.getElementById(id).addEventListener("input", tryCustom));
+tryCustom();
+</script>
+</body>
+</html>
