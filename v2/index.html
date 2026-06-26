@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PL分析レポート｜損益構造の可視化</title>
+<style>
+  :root {
+    --serif: "Yu Mincho","YuMincho","Hiragino Mincho ProN","Noto Serif JP",serif;
+    --sans: "Yu Gothic","YuGothic","Hiragino Kaku Gothic ProN","Noto Sans JP","Meiryo",sans-serif;
+    --paper: #f7f4ec;
+    --panel: #fffdf8;
+    --ink:   #211f1b;
+    --sub:   #6f675a;
+    --rule:  #d8d0bf;
+    --rule2: #b9ad95;
+    --accent:#243b56;
+    --pos:   #2f6b40;
+    --neg:   #9a2b25;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: var(--sans); color: var(--ink); background: var(--paper);
+    margin: 0; padding: 40px 18px 64px; line-height: 1.8;
+    font-feature-settings: "palt";
+  }
+  .sheet {
+    max-width: 760px; margin: 0 auto; background: var(--panel);
+    border: 1px solid var(--rule2); padding: 44px 48px 40px;
+    box-shadow: 0 1px 0 var(--rule);
+  }
+  @media (max-width: 620px) { .sheet { padding: 28px 22px; } body { padding: 18px 10px 40px; } }
+
+  .masthead { text-align: center; border-bottom: 3px double var(--rule2); padding-bottom: 18px; margin-bottom: 10px; }
+  .overline { font-size: 11px; letter-spacing: .42em; color: var(--accent); text-indent: .42em; margin: 0 0 8px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 26px; letter-spacing: .1em; margin: 0; }
+  .meta { margin: 12px 0 0; font-size: 12px; color: var(--sub); letter-spacing: .08em; }
+  .meta span { margin: 0 .55em; }
+
+  h2 {
+    font-family: var(--serif); font-weight: 600; font-size: 17px; letter-spacing: .08em;
+    margin: 38px 0 14px; padding-bottom: 7px; border-bottom: 1px solid var(--rule2);
+    display: flex; align-items: baseline; gap: .6em;
+  }
+  h2 .no { font-size: 13px; color: var(--accent); letter-spacing: .1em; }
+  .note { font-size: 12px; color: var(--sub); margin: 8px 0 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  th, td { padding: 9px 6px; border-bottom: 1px solid var(--rule); }
+  thead th { color: var(--sub); font-weight: 600; font-size: 11.5px; letter-spacing: .12em; border-bottom: 1px solid var(--rule2); }
+  td.num, th.num { text-align: right; font-family: var(--serif); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+  td.cat { color: var(--sub); font-size: 12.5px; }
+  td.formula { color: var(--sub); font-size: 12px; }
+  tr.level td { font-weight: 600; }
+  tr.level td.num { font-size: 15.5px; }
+
+  /* グラフ */
+  .chart-wrap { overflow-x: auto; margin-top: 8px; padding-bottom: 4px; }
+  canvas#chart { width: 100%; min-width: 580px; height: 430px; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px 20px; margin-top: 12px; font-size: 12px; color: var(--sub); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 1px; display: inline-block; }
+
+  footer { max-width: 760px; margin: 18px auto 0; text-align: center; font-size: 11px; color: var(--sub); letter-spacing: .08em; line-height: 1.9; }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="masthead">
+    <p class="overline">PROFIT &amp; LOSS STRUCTURE</p>
+    <h1>PL分析レポート｜損益構造の可視化</h1>
+    <p class="meta"><span>黒字会社・例題</span>｜<span>単一期間</span>｜<span>単位：円</span></p>
+  </div>
+
+  <!-- Ⅰ 入力データ -->
+  <section>
+    <h2><span class="no">Ⅰ</span> 入力データ</h2>
+    <table>
+      <thead><tr><th>科目</th><th>区分</th><th class="num">金額</th></tr></thead>
+      <tbody id="inputTable"></tbody>
+    </table>
+  </section>
+
+  <!-- Ⅱ 損益の算出 -->
+  <section>
+    <h2><span class="no">Ⅱ</span> 損益の算出</h2>
+    <table>
+      <thead><tr><th>利益区分</th><th class="formula">算式</th><th class="num">金額</th></tr></thead>
+      <tbody id="plTable"></tbody>
+    </table>
+  </section>
+
+  <!-- Ⅲ 損益構造グラフ -->
+  <section>
+    <h2><span class="no">Ⅲ</span> 損益構造グラフ</h2>
+    <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    <div class="legend" id="legend"></div>
+    <p class="note">売上高から各段階の利益へと、費用が差し引かれて減っていく構造を階段状に示しています（縦軸の単位：万円）。</p>
+  </section>
+
+</div>
+<footer>
+  PL分析レポート ／ 単一ファイル・外部ライブラリ不使用<br>
+  制作：大塚　春 ｜ 2026年6月 ｜ GitHub: <a href="https://github.com/harurun0226-art" target="_blank" rel="noopener">https://github.com/harurun0226-art</a>
+</footer>
+
+<script>
+"use strict";
+
+// ===== 固定データ（黒字会社・例題）=====
+const D = {
+  sales: 5000000, cogs: 3000000,
+  salary: 500000, ad: 200000, rent: 100000,
+  nonopRev: 50000, nonopExp: 30000,
+  special: 0, tax: 220000,
+};
+
+// ===== 計算 =====
+const sga = D.salary + D.ad + D.rent;                       // 販管費合計
+const grossProfit = D.sales - D.cogs;                       // 売上総利益
+const operating = grossProfit - sga;                        // 営業利益
+const ordinary = operating + D.nonopRev - D.nonopExp;       // 経常利益
+const pretax = ordinary + D.special;                        // 税引前利益
+const net = pretax - D.tax;                                 // 当期純利益
+
+const yen = v => (v < 0 ? "−" : "") + "¥" + Math.abs(v).toLocaleString("ja-JP");
+
+// ===== Ⅰ 入力データ表 =====
+(function renderInput() {
+  const rows = [
+    ["売上高", "収益", D.sales],
+    ["売上原価", "売上原価", D.cogs],
+    ["給料手当", "販管費", D.salary],
+    ["広告宣伝費", "販管費", D.ad],
+    ["地代家賃", "販管費", D.rent],
+    ["営業外収益", "営業外収益", D.nonopRev],
+    ["営業外費用", "営業外費用", D.nonopExp],
+    ["特別損益", "特別損益", D.special],
+    ["法人税等", "税金", D.tax],
+  ];
+  document.getElementById("inputTable").innerHTML = rows.map(
+    r => `<tr><td>${r[0]}</td><td class="cat">${r[1]}</td><td class="num">${yen(r[2])}</td></tr>`).join("");
+})();
+
+// ===== Ⅱ 損益の算出 表 =====
+(function renderPL() {
+  const rows = [
+    ["売上総利益", "売上高 − 売上原価", grossProfit],
+    ["営業利益", "売上総利益 − 販管費（¥" + sga.toLocaleString("ja-JP") + "）", operating],
+    ["経常利益", "営業利益 ＋ 営業外収益 − 営業外費用", ordinary],
+    ["税引前利益", "経常利益 ＋ 特別損益", pretax],
+    ["当期純利益", "税引前利益 − 法人税等", net],
+  ];
+  document.getElementById("plTable").innerHTML = rows.map(
+    r => `<tr class="level"><td>${r[0]}</td><td class="formula">${r[1]}</td>
+          <td class="num" style="${r[2] < 0 ? "color:var(--neg)" : ""}">${yen(r[2])}</td></tr>`).join("");
+})();
+
+// ===== Ⅲ 階段状グラフ（Canvas API・外部ライブラリ不使用）=====
+const STAGES = [
+  { name: "売上高",     value: D.sales,    color: "#243b56" }, // ネイビー
+  { name: "売上総利益", value: grossProfit, color: "#1e4d2b" }, // ダークグリーン
+  { name: "営業利益",   value: operating,  color: "#2f6b40" }, // グリーン
+  { name: "経常利益",   value: ordinary,   color: "#74a784" }, // ライトグリーン
+  { name: "税引前利益", value: pretax,     color: "#9fae46" }, // イエローグリーン
+  { name: "当期純利益", value: net,        color: net >= 0 ? "#2f6b40" : "#9a2b25" }, // 黒字=緑/赤字=赤
+];
+
+// 凡例
+document.getElementById("legend").innerHTML = STAGES.map(
+  s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+
+function man(v) { return v === 0 ? "0" : (v / 10000).toLocaleString("ja-JP") + "万"; }
+
+function drawChart() {
+  const canvas = document.getElementById("chart");
+  const cssW = canvas.clientWidth, cssH = 430;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const m = { top: 40, right: 16, bottom: 52, left: 70 };
+  const plotW = cssW - m.left - m.right;
+  const plotH = cssH - m.top - m.bottom;
+
+  const values = STAGES.map(s => s.value);
+  const yMax = Math.max(...values, 0);
+  const yMin = Math.min(...values, 0);
+  const range = (yMax - yMin) || 1;
+  const yOf = v => m.top + plotH * (1 - (v - yMin) / range);
+  const zeroY = yOf(0);
+
+  // 目盛り線とY軸ラベル
+  const ticks = 5;
+  ctx.lineWidth = 1;
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= ticks; i++) {
+    const val = yMin + range * i / ticks;
+    const y = yOf(val);
+    ctx.strokeStyle = "#e7dfce";
+    ctx.beginPath(); ctx.moveTo(m.left, y); ctx.lineTo(m.left + plotW, y); ctx.stroke();
+    ctx.fillStyle = "#6f675a";
+    ctx.font = '11px ' + getComputedStyle(document.body).getPropertyValue("--serif");
+    ctx.textAlign = "right";
+    ctx.fillText(man(Math.round(val)), m.left - 8, y);
+  }
+  // ゼロ基準線（強調）
+  ctx.strokeStyle = "#b9ad95";
+  ctx.beginPath(); ctx.moveTo(m.left, zeroY); ctx.lineTo(m.left + plotW, zeroY); ctx.stroke();
+
+  // バー
+  const n = STAGES.length;
+  const slot = plotW / n;
+  const barW = Math.min(slot * 0.56, 74);
+  const serif = getComputedStyle(document.body).getPropertyValue("--serif");
+  STAGES.forEach((s, i) => {
+    const cx = m.left + slot * (i + 0.5);
+    const x = cx - barW / 2;
+    const yTop = yOf(Math.max(s.value, 0));
+    const yBot = yOf(Math.min(s.value, 0));
+    const h = Math.max(yBot - yTop, 1);
+    ctx.fillStyle = s.color;
+    ctx.fillRect(x, yTop, barW, h);
+
+    // 金額ラベル（バー上、負なら下）
+    ctx.fillStyle = "#211f1b";
+    ctx.font = '12px ' + serif;
+    ctx.textAlign = "center";
+    ctx.textBaseline = s.value >= 0 ? "bottom" : "top";
+    ctx.fillText(yen(s.value), cx, s.value >= 0 ? yTop - 6 : yBot + 6);
+
+    // 段階名（X軸下）
+    ctx.fillStyle = "#6f675a";
+    ctx.font = '11.5px ' + serif;
+    ctx.textBaseline = "top";
+    ctx.fillText(s.name, cx, m.top + plotH + 10);
+  });
+}
+
+drawChart();
+let rT;
+window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(drawChart, 120); });
+</script>
+</body>
+</html>
