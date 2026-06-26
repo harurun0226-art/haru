@@ -469,7 +469,7 @@ const RADAR = [
   { name: "効率性", metric: "総資産回転率",     raw: D.sales / totalAssets,                unit: "回", target: 1.5, avg: 18 },
   { name: "耐性",   metric: "流動比率",         raw: D.currentAssets / D.currentLiab * 100, unit: "%", target: 200, avg: 16 },
 ];
-RADAR.forEach(a => a.score = Math.min(a.raw / a.target * 25, 25));
+RADAR.forEach(a => a.score = Math.max(0, Math.min(a.raw / a.target * 25, 25)));
 let radarTotal = RADAR.reduce((s, a) => s + a.score, 0);     // 自社 合計
 let radarAvgTotal = RADAR.reduce((s, a) => s + a.avg, 0);    // 製造業平均 合計
 const fmtRaw = a => a.raw.toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + a.unit;
@@ -653,7 +653,7 @@ function rebuildSeries() {
   RADAR[2].raw = cfMargin;
   RADAR[3].raw = assetTurnover;
   RADAR[4].raw = currentRatio;
-  RADAR.forEach(a => a.score = Math.min(a.raw / a.target * 25, 25));
+  RADAR.forEach(a => a.score = Math.max(0, Math.min(a.raw / a.target * 25, 25)));
   radarTotal = RADAR.reduce((s, a) => s + a.score, 0);
   radarAvgTotal = RADAR.reduce((s, a) => s + a.avg, 0);
 }
