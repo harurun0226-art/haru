@@ -97,6 +97,26 @@
   table.score td.num, table.score th.num { text-align: right; font-family: var(--serif); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
   table.score td:first-child { color: var(--ink); }
   table.score tr.total td { font-weight: 600; border-top: 1px solid var(--rule2); color: var(--ink); }
+
+  /* AI分析サマリー */
+  .ai-btn {
+    font-family: var(--sans); font-size: 13.5px; letter-spacing: .08em; color: var(--ink);
+    background: linear-gradient(180deg, var(--panel2) 0%, var(--panel) 100%);
+    border: 1px solid var(--rule2); border-radius: 4px; padding: 10px 24px; cursor: pointer;
+    transition: border-color .15s;
+  }
+  .ai-btn:hover:not(:disabled) { border-color: var(--accent); }
+  .ai-btn:disabled { opacity: .55; cursor: default; }
+  .ai-status { margin-top: 12px; font-size: 13px; color: var(--sub); min-height: 1px; }
+  .ai-status.err { color: var(--neg); }
+  .ai-result { margin-top: 14px; }
+  .ai-result h3 {
+    font-family: var(--serif); font-size: 14px; color: var(--accent); letter-spacing: .06em;
+    margin: 16px 0 5px; padding-bottom: 4px; border-bottom: 1px solid var(--rule);
+  }
+  .ai-result p { font-size: 13.5px; color: var(--ink); margin: 0 0 6px; line-height: 1.85; }
+  .ai-result .summary { background: rgba(143,180,214,0.07); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 2px; }
+  .ai-disclaimer { font-size: 11px; color: var(--sub); margin-top: 16px; border-top: 1px solid var(--rule); padding-top: 10px; line-height: 1.7; }
 </style>
 </head>
 <body>
@@ -164,6 +184,15 @@
     <p class="desc">5年推移。<span style="color:#6b97c4;">青＝売上高（左外軸・万円）</span>／<span style="color:#5aa873;">緑＝営業利益・当期純利益（左内軸・万円）</span>／<span style="color:#cf8f4a;">橙＝自己資本比率（右軸・％）</span>。利益は売上と桁が違うため専用スケールで表示。</p>
     <canvas id="trendChart"></canvas>
     <div class="legend" id="trendLegend"></div>
+  </section>
+
+  <!-- ⑥ AI分析サマリー -->
+  <section class="card" style="margin-top:16px;">
+    <h2><span class="no">AI</span> AI分析サマリー</h2>
+    <p class="desc">ダッシュボードの財務数値から、収益性・安全性・成長性・効率性・耐性の5観点コメントと総合所見を生成します。</p>
+    <button class="ai-btn" id="aiRunBtn">AI分析を実行</button>
+    <div class="ai-status" id="aiStatus"></div>
+    <div class="ai-result" id="aiResult"></div>
   </section>
 
 </div>
@@ -576,6 +605,75 @@ function drawAll() {
 drawAll();
 let rT;
 window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(drawAll, 130); });
+
+// ===== ⑥ AI分析サマリー（ローカル生成）=====
+// 注：静的ページから api.anthropic.com を直接叩くのは CORS・認証・キー漏洩の問題で不可。
+// そのため財務数値からブラウザ内で分析文を生成する（5観点＋総合所見、断定回避のヘッジ表現）。
+const opMargin      = operating / D.sales * 100;          // 売上高営業利益率(%)
+const cfMargin      = D.cfOp / D.sales * 100;             // 営業CFマージン(%)
+const assetTurnover = D.sales / totalAssets;             // 総資産回転率(回)
+const currentRatio  = D.currentAssets / D.currentLiab * 100; // 流動比率(%)
+const r1 = (v) => v.toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+function buildAnalysis() {
+  // RADAR: 0=収益性,1=安全性,2=成長性,3=効率性,4=耐性（scoreは自社、avgは製造業平均）
+  const above = i => RADAR[i].score >= RADAR[i].avg;
+  const cmp = i => above(i) ? "上回って" : "やや下回って";
+
+  const sections = [
+    {
+      h: "① 収益性",
+      body: `売上高営業利益率は約${r1(opMargin)}%で、製造業平均の目安（5%程度）を${cmp(0)}います。本業で利益を生み出す力は相対的に高い可能性があります。当期純利益も${yen(net)}を確保しており、利益の質を継続して確認する余地があります。`
+    },
+    {
+      h: "② 安全性",
+      body: `自己資本比率は約${r1(equityRatio * 100)}%で、製造業平均の目安（36%程度）を${cmp(1)}います。返済に過度に依存しない財務基盤が築けている可能性があります。固定負債の返済期限の構成については、引き続き確認する余地があります。`
+    },
+    {
+      h: "③ 成長性",
+      body: `営業キャッシュフローマージンは約${r1(cfMargin)}%で、平均の目安（12%程度）を${cmp(2)}います。利益が着実に現金として回収できている可能性があります。5年推移でも売上は増加基調にあり、今後も同様の傾向が続くか確認する余地があります。`
+    },
+    {
+      h: "④ 効率性",
+      body: `総資産回転率は約${r1(assetTurnover)}回で、平均の目安（1.1回程度）を${cmp(3)}います。保有資産に対して売上が十分に大きいとは言い切れず、資産の活用効率には改善の余地がある可能性があります。固定資産の使われ方を確認する余地があります。`
+    },
+    {
+      h: "⑤ 耐性",
+      body: `流動比率は約${r1(currentRatio)}%で、平均の目安（160%程度）を${cmp(4)}います。短期的な支払い能力には一定の余裕がある可能性があります。ただし手元資金の適正水準は事業環境によって変わるため、確認する余地があります。`
+    },
+  ];
+
+  const strong = [0, 1, 2, 4].filter(above).length;
+  const summary = `全体として、収益性と成長性が製造業平均を上回る一方、効率性は平均をやや下回る傾向が見られます。安全性と耐性は安定圏にあり、現状の収益力を当面維持できる可能性があります。これらは例題データに基づく分析であり、実際の経営判断にあたっては追加の情報を確認する余地があります。`;
+
+  return sections.map(s => `<h3>${s.h}</h3><p>${s.body}</p>`).join("") +
+         `<h3>総合所見</h3><p class="summary">${summary}</p>` +
+         `<p class="ai-disclaimer">※ 本サマリーは、上記ダッシュボードの財務数値からブラウザ内で自動生成した分析コメントです（外部APIへの送信なし）。製造業平均はレーダーチャートの業界目安スコアに基づきます。</p>`;
+}
+
+(function setupAI() {
+  const btn = document.getElementById("aiRunBtn");
+  const status = document.getElementById("aiStatus");
+  const result = document.getElementById("aiResult");
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    status.className = "ai-status";
+    status.textContent = "分析中...";
+    result.innerHTML = "";
+    setTimeout(() => {
+      try {
+        result.innerHTML = buildAnalysis();
+        status.textContent = "";
+        btn.textContent = "再分析";
+      } catch (e) {
+        status.className = "ai-status err";
+        status.textContent = "分析に失敗しました。再度お試しください。";
+      } finally {
+        btn.disabled = false;
+      }
+    }, 900);
+  });
+})();
 </script>
 </body>
 </html>
