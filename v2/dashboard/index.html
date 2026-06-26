@@ -117,6 +117,19 @@
   .ai-result p { font-size: 13.5px; color: var(--ink); margin: 0 0 6px; line-height: 1.85; }
   .ai-result .summary { background: rgba(143,180,214,0.07); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 2px; }
   .ai-disclaimer { font-size: 11px; color: var(--sub); margin-top: 16px; border-top: 1px solid var(--rule); padding-top: 10px; line-height: 1.7; }
+
+  /* CSVアップロード */
+  .upload {
+    border: 1px dashed var(--rule2); border-radius: 6px; background: rgba(143,180,214,0.04);
+    padding: 20px 18px; margin-bottom: 22px; text-align: center;
+    transition: border-color .15s, background .15s;
+  }
+  .upload.drag { border-color: var(--accent); background: rgba(143,180,214,0.12); }
+  .upload-title { font-family: var(--serif); font-size: 15px; margin: 0 0 4px; color: var(--ink); letter-spacing: .06em; }
+  .upload-sub { font-size: 11.5px; color: var(--sub); margin: 0 0 12px; line-height: 1.7; }
+  .upload-status { font-size: 12.5px; margin: 12px 0 0; min-height: 1px; color: var(--sub); }
+  .upload-status.ok { color: var(--pos); }
+  .upload-status.err { color: var(--neg); }
 </style>
 </head>
 <body>
@@ -128,6 +141,15 @@
     <h1>AI財務分析ダッシュボード</h1>
     <p class="subtitle">PL・BS・CF を統合分析</p>
   </header>
+
+  <!-- CSVアップロード -->
+  <div class="upload" id="dropZone">
+    <p class="upload-title">CSVファイルをアップロード</p>
+    <p class="upload-sub">ここにドラッグ＆ドロップ、またはボタンで選択（列：科目・区分・金額）。読み込むとダッシュボードが自動更新されます。</p>
+    <label class="ai-btn" for="csvInput" style="display:inline-block;">CSVファイルを選択</label>
+    <input type="file" id="csvInput" accept=".csv,text/csv" hidden>
+    <p class="upload-status" id="csvStatus"></p>
+  </div>
 
   <!-- ② KPIカード -->
   <div class="kpis" id="kpis"></div>
@@ -217,20 +239,31 @@ const D = {
   cfOp: 800000, cfInv: -500000, cfFin: -200000,
 };
 
-// ===== 計算 =====
-const sga = D.salary + D.ad + D.rent;
-const grossProfit = D.sales - D.cogs;
-const operating = grossProfit - sga;
-const ordinary = operating + D.nonopRev - D.nonopExp;
-const pretax = ordinary + D.special;
-const net = pretax - D.tax;
+// ===== 計算（CSV読込で再計算可能・ゼロ除算ガード付き）=====
+let sga, grossProfit, operating, ordinary, pretax, net;
+let totalAssets, totalLiab, totalLE, equityRatio, cashChange;
+let opMargin, cfMargin, assetTurnover, currentRatio;
+function recomputeModel() {
+  sga = D.salary + D.ad + D.rent;
+  grossProfit = D.sales - D.cogs;
+  operating = grossProfit - sga;
+  ordinary = operating + D.nonopRev - D.nonopExp;
+  pretax = ordinary + D.special;
+  net = pretax - D.tax;
 
-const totalAssets = D.currentAssets + D.fixedAssets;
-const totalLiab = D.currentLiab + D.fixedLiab;
-const totalLE = totalLiab + D.equity;
-const equityRatio = D.equity / totalAssets;
+  totalAssets = D.currentAssets + D.fixedAssets;
+  totalLiab = D.currentLiab + D.fixedLiab;
+  totalLE = totalLiab + D.equity;
+  equityRatio = totalAssets ? D.equity / totalAssets : 0;
 
-const cashChange = D.cfOp + D.cfInv + D.cfFin;
+  cashChange = D.cfOp + D.cfInv + D.cfFin;
+
+  opMargin      = D.sales ? operating / D.sales * 100 : 0;   // 売上高営業利益率(%)
+  cfMargin      = D.sales ? D.cfOp / D.sales * 100 : 0;      // 営業CFマージン(%)
+  assetTurnover = totalAssets ? D.sales / totalAssets : 0;   // 総資産回転率(回)
+  currentRatio  = D.currentLiab ? D.currentAssets / D.currentLiab * 100 : 0; // 流動比率(%)
+}
+recomputeModel();
 
 // ===== 共通ヘルパー =====
 const yen = v => (v < 0 ? "−" : "") + "¥" + Math.abs(v).toLocaleString("ja-JP");
@@ -239,7 +272,7 @@ const pct = v => (v * 100).toLocaleString("ja-JP", { minimumFractionDigits: 1, m
 const serifFont = () => getComputedStyle(document.body).getPropertyValue("--serif");
 
 // ===== ② KPIカード =====
-(function renderKpis() {
+function renderKpis() {
   const cards = [
     { label: "売上高",     value: yen(D.sales),     cls: "" },
     { label: "営業利益",   value: yen(operating),   cls: operating >= 0 ? "pos" : "" },
@@ -249,7 +282,7 @@ const serifFont = () => getComputedStyle(document.body).getPropertyValue("--seri
   ];
   document.getElementById("kpis").innerHTML = cards.map(c =>
     `<div class="kpi ${c.cls}"><p class="label">${c.label}</p><p class="value">${c.value}</p></div>`).join("");
-})();
+}
 
 // ===== 棒グラフ共通描画（ゼロ基準・正は上/負は下）=====
 function drawBars(canvasId, legendId, items, cssH) {
@@ -437,20 +470,22 @@ const RADAR = [
   { name: "耐性",   metric: "流動比率",         raw: D.currentAssets / D.currentLiab * 100, unit: "%", target: 200, avg: 16 },
 ];
 RADAR.forEach(a => a.score = Math.min(a.raw / a.target * 25, 25));
-const radarTotal = RADAR.reduce((s, a) => s + a.score, 0);     // 自社 合計
-const radarAvgTotal = RADAR.reduce((s, a) => s + a.avg, 0);    // 製造業平均 合計
+let radarTotal = RADAR.reduce((s, a) => s + a.score, 0);     // 自社 合計
+let radarAvgTotal = RADAR.reduce((s, a) => s + a.avg, 0);    // 製造業平均 合計
 const fmtRaw = a => a.raw.toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + a.unit;
 
 // スコア表（自社／製造業平均）
-document.getElementById("radarTable").innerHTML =
-  RADAR.map(a =>
-    `<tr><td>${a.name}<span style="color:var(--sub);font-size:11px;">（${a.metric}）</span></td>` +
-    `<td class="num">${fmtRaw(a)}</td>` +
-    `<td class="num">${a.score.toFixed(1)}</td>` +
-    `<td class="num" style="color:var(--sub);">${a.avg.toFixed(1)}</td></tr>`).join("") +
-  `<tr class="total"><td>総合スコア（／125）</td><td class="num">—</td>` +
-  `<td class="num">${radarTotal.toFixed(1)}</td>` +
-  `<td class="num">${radarAvgTotal.toFixed(1)}</td></tr>`;
+function renderRadarTable() {
+  document.getElementById("radarTable").innerHTML =
+    RADAR.map(a =>
+      `<tr><td>${a.name}<span style="color:var(--sub);font-size:11px;">（${a.metric}）</span></td>` +
+      `<td class="num">${fmtRaw(a)}</td>` +
+      `<td class="num">${a.score.toFixed(1)}</td>` +
+      `<td class="num" style="color:var(--sub);">${a.avg.toFixed(1)}</td></tr>`).join("") +
+    `<tr class="total"><td>総合スコア（／125）</td><td class="num">—</td>` +
+    `<td class="num">${radarTotal.toFixed(1)}</td>` +
+    `<td class="num">${radarAvgTotal.toFixed(1)}</td></tr>`;
+}
 
 function drawRadar(canvasId, items, cssH) {
   const canvas = document.getElementById(canvasId);
@@ -602,17 +637,51 @@ function drawAll() {
   drawRadar("radarChart", RADAR, 340);
   drawTrend("trendChart", 320);
 }
-drawAll();
+// 系列データの再構築（CSV読込で再計算した値を各グラフ配列へ反映）
+function rebuildSeries() {
+  PL[0].value = D.sales; PL[1].value = grossProfit; PL[2].value = operating;
+  PL[3].value = ordinary; PL[4].value = pretax; PL[5].value = net;
+  PL[5].color = net >= 0 ? "#5aa873" : "#cf7068";
+
+  BS_LEFT[0].value = D.currentAssets; BS_LEFT[1].value = D.fixedAssets;
+  BS_RIGHT[0].value = D.currentLiab; BS_RIGHT[1].value = D.fixedLiab; BS_RIGHT[2].value = D.equity;
+
+  CF[0].value = D.cfOp; CF[1].value = D.cfInv; CF[2].value = D.cfFin; CF[3].value = cashChange;
+
+  RADAR[0].raw = opMargin;
+  RADAR[1].raw = equityRatio * 100;
+  RADAR[2].raw = cfMargin;
+  RADAR[3].raw = assetTurnover;
+  RADAR[4].raw = currentRatio;
+  RADAR.forEach(a => a.score = Math.min(a.raw / a.target * 25, 25));
+  radarTotal = RADAR.reduce((s, a) => s + a.score, 0);
+  radarAvgTotal = RADAR.reduce((s, a) => s + a.avg, 0);
+}
+
+// 全更新（初期表示・CSV読込の両方で使用）
+function refresh() {
+  recomputeModel();
+  rebuildSeries();
+  renderKpis();
+  renderRadarTable();
+  drawAll();
+  // 数値が変わったのでAI分析はリセット（再分析ボタンで再生成）
+  const aiRes = document.getElementById("aiResult");
+  const aiSt = document.getElementById("aiStatus");
+  const aiBtn = document.getElementById("aiRunBtn");
+  if (aiRes) aiRes.innerHTML = "";
+  if (aiSt) { aiSt.textContent = ""; aiSt.className = "ai-status"; }
+  if (aiBtn) aiBtn.textContent = "AI分析を実行";
+}
+
+refresh();
 let rT;
 window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(drawAll, 130); });
 
 // ===== ⑥ AI分析サマリー（ローカル生成）=====
 // 注：静的ページから api.anthropic.com を直接叩くのは CORS・認証・キー漏洩の問題で不可。
 // そのため財務数値からブラウザ内で分析文を生成する（5観点＋総合所見、断定回避のヘッジ表現）。
-const opMargin      = operating / D.sales * 100;          // 売上高営業利益率(%)
-const cfMargin      = D.cfOp / D.sales * 100;             // 営業CFマージン(%)
-const assetTurnover = D.sales / totalAssets;             // 総資産回転率(回)
-const currentRatio  = D.currentAssets / D.currentLiab * 100; // 流動比率(%)
+// opMargin / cfMargin / assetTurnover / currentRatio は recomputeModel() で算出済み
 const r1 = (v) => v.toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 function buildAnalysis() {
@@ -672,6 +741,81 @@ function buildAnalysis() {
         btn.disabled = false;
       }
     }, 900);
+  });
+})();
+
+// ===== CSVアップロード（科目・区分・金額）=====
+// 区分→Dのキーへの対応（販管費は合算してsalaryへ集約）
+const CSV_MAP = {
+  "売上": "sales", "売上原価": "cogs", "販管費": "salary",
+  "営業外収益": "nonopRev", "営業外費用": "nonopExp", "法人税等": "tax",
+  "流動資産": "currentAssets", "固定資産": "fixedAssets",
+  "流動負債": "currentLiab", "固定負債": "fixedLiab", "純資産": "equity",
+  "営業CF": "cfOp", "投資CF": "cfInv", "財務CF": "cfFin",
+};
+
+function parseCSVAndApply(text) {
+  let raw = String(text);
+  if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1); // BOM除去
+  const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length);
+  if (!lines.length) throw new Error("empty");
+
+  // ヘッダー検証：科目・区分・金額の3列が必須
+  const header = lines[0].split(",").map(s => s.trim());
+  const iCat = header.indexOf("区分");
+  const iAmt = header.indexOf("金額");
+  if (header.indexOf("科目") < 0 || iCat < 0 || iAmt < 0) throw new Error("bad header");
+
+  // 特別損益はCSV形式に無いため0で初期化（年度データも無いのでトレンドは現状維持）
+  const next = {
+    sales: 0, cogs: 0, salary: 0, ad: 0, rent: 0, nonopRev: 0, nonopExp: 0, special: 0, tax: 0,
+    currentAssets: 0, fixedAssets: 0, currentLiab: 0, fixedLiab: 0, equity: 0,
+    cfOp: 0, cfInv: 0, cfFin: 0,
+  };
+  let matched = 0;
+  for (let r = 1; r < lines.length; r++) {
+    const cols = lines[r].split(",");
+    const cat = (cols[iCat] || "").trim();
+    const amt = parseFloat((cols[iAmt] || "").replace(/[^0-9.\-]/g, ""));
+    if (!cat || isNaN(amt)) continue;
+    const key = CSV_MAP[cat];
+    if (key) { next[key] += amt; matched++; }
+  }
+  if (!matched) throw new Error("no matching rows");
+
+  Object.assign(D, next);  // Dはconstオブジェクトだがプロパティは更新可
+  refresh();               // 全グラフ・KPI・レーダーを再描画、AIはリセット
+}
+
+(function setupCSV() {
+  const input = document.getElementById("csvInput");
+  const zone = document.getElementById("dropZone");
+  const status = document.getElementById("csvStatus");
+
+  function setStatus(msg, cls) { status.textContent = msg; status.className = "upload-status" + (cls ? " " + cls : ""); }
+
+  function handleFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        parseCSVAndApply(e.target.result);
+        setStatus("データを読み込みました：" + file.name, "ok");
+      } catch (err) {
+        setStatus("フォーマットエラー：科目・区分・金額の列が必要です", "err");
+      }
+    };
+    reader.onerror = () => setStatus("フォーマットエラー：科目・区分・金額の列が必要です", "err");
+    reader.readAsText(file, "UTF-8");
+  }
+
+  input.addEventListener("change", () => { handleFile(input.files[0]); input.value = ""; });
+  ["dragenter", "dragover"].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add("drag"); }));
+  ["dragleave", "dragend"].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove("drag"); }));
+  zone.addEventListener("drop", e => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer && e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
   });
 })();
 </script>
