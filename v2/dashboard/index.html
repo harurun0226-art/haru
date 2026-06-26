@@ -141,13 +141,19 @@
     <h2><span class="no">RADAR</span> 財務分析レーダーチャート</h2>
     <p class="desc">収益性・安全性・成長性・効率性・耐性の5軸評価（各25点満点）。</p>
     <div class="radar-grid">
-      <canvas id="radarChart"></canvas>
+      <div>
+        <canvas id="radarChart"></canvas>
+        <div class="legend" style="justify-content:center; margin-top:12px;">
+          <span><i style="background:#6b97c4"></i>自社</span>
+          <span><i style="background:#cf8f4a"></i>製造業平均</span>
+        </div>
+      </div>
       <div>
         <table class="score">
-          <thead><tr><th>評価軸（指標）</th><th class="num">元の数値</th><th class="num">スコア</th></tr></thead>
+          <thead><tr><th>評価軸（指標）</th><th class="num">自社の数値</th><th class="num">自社</th><th class="num">製造業平均</th></tr></thead>
           <tbody id="radarTable"></tbody>
         </table>
-        <p class="desc" style="margin-top:10px;">各軸は目安値で25点満点に換算（収益性10%・安全性50%・成長性20%・効率性1.5回・耐性200%＝各25点。上限25点）。</p>
+        <p class="desc" style="margin-top:10px;">スコアは各軸25点満点（自社は目安値換算：収益性10%・安全性50%・成長性20%・効率性1.5回・耐性200%＝各25点、上限25点）。製造業平均は業界目安の固定値。</p>
       </div>
     </div>
   </section>
@@ -385,23 +391,29 @@ const CF = [
 
 // ===== ④ レーダーチャート =====
 // 各軸：目安値で25点満点に換算（上限25点）
+// avg = 製造業平均スコア（業界目安の固定値）
 const RADAR = [
-  { name: "収益性", metric: "売上高営業利益率", raw: operating / D.sales * 100,            unit: "%", target: 10 },
-  { name: "安全性", metric: "自己資本比率",     raw: equityRatio * 100,                    unit: "%", target: 50 },
-  { name: "成長性", metric: "営業CFマージン",   raw: D.cfOp / D.sales * 100,               unit: "%", target: 20 },
-  { name: "効率性", metric: "総資産回転率",     raw: D.sales / totalAssets,                unit: "回", target: 1.5 },
-  { name: "耐性",   metric: "流動比率",         raw: D.currentAssets / D.currentLiab * 100, unit: "%", target: 200 },
+  { name: "収益性", metric: "売上高営業利益率", raw: operating / D.sales * 100,            unit: "%", target: 10,  avg: 12 },
+  { name: "安全性", metric: "自己資本比率",     raw: equityRatio * 100,                    unit: "%", target: 50,  avg: 18 },
+  { name: "成長性", metric: "営業CFマージン",   raw: D.cfOp / D.sales * 100,               unit: "%", target: 20,  avg: 15 },
+  { name: "効率性", metric: "総資産回転率",     raw: D.sales / totalAssets,                unit: "回", target: 1.5, avg: 18 },
+  { name: "耐性",   metric: "流動比率",         raw: D.currentAssets / D.currentLiab * 100, unit: "%", target: 200, avg: 16 },
 ];
 RADAR.forEach(a => a.score = Math.min(a.raw / a.target * 25, 25));
-const radarTotal = RADAR.reduce((s, a) => s + a.score, 0);
+const radarTotal = RADAR.reduce((s, a) => s + a.score, 0);     // 自社 合計
+const radarAvgTotal = RADAR.reduce((s, a) => s + a.avg, 0);    // 製造業平均 合計
 const fmtRaw = a => a.raw.toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + a.unit;
 
-// スコア表
+// スコア表（自社／製造業平均）
 document.getElementById("radarTable").innerHTML =
   RADAR.map(a =>
     `<tr><td>${a.name}<span style="color:var(--sub);font-size:11px;">（${a.metric}）</span></td>` +
-    `<td class="num">${fmtRaw(a)}</td><td class="num">${a.score.toFixed(1)} / 25</td></tr>`).join("") +
-  `<tr class="total"><td>総合スコア</td><td class="num">—</td><td class="num">${radarTotal.toFixed(1)} / 125</td></tr>`;
+    `<td class="num">${fmtRaw(a)}</td>` +
+    `<td class="num">${a.score.toFixed(1)}</td>` +
+    `<td class="num" style="color:var(--sub);">${a.avg.toFixed(1)}</td></tr>`).join("") +
+  `<tr class="total"><td>総合スコア（／125）</td><td class="num">—</td>` +
+  `<td class="num">${radarTotal.toFixed(1)}</td>` +
+  `<td class="num">${radarAvgTotal.toFixed(1)}</td></tr>`;
 
 function drawRadar(canvasId, items, cssH) {
   const canvas = document.getElementById(canvasId);
@@ -433,18 +445,21 @@ function drawRadar(canvasId, items, cssH) {
   ctx.strokeStyle = "rgba(255,255,255,0.14)";
   for (let i = 0; i < N; i++) { const [x, y] = pt(i, 1); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke(); }
 
-  // データポリゴン（塗り＝半透明ブルー、枠線＝ネイビーブルー）
-  ctx.beginPath();
-  items.forEach((s, i) => { const [x, y] = pt(i, Math.min(s.score / maxScore, 1)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-  ctx.closePath();
-  ctx.fillStyle = "rgba(107,151,196,0.32)";
-  ctx.fill();
-  ctx.strokeStyle = "#8fb4d6"; ctx.lineWidth = 2; ctx.stroke();
-  // 頂点ドット
-  items.forEach((s, i) => {
-    const [x, y] = pt(i, Math.min(s.score / maxScore, 1));
-    ctx.fillStyle = "#cfe0f0"; ctx.beginPath(); ctx.arc(x, y, 2.6, 0, Math.PI * 2); ctx.fill();
-  });
+  // データポリゴン（系列ごとに描画）
+  function drawSeries(scoreOf, fill, stroke, dot) {
+    ctx.beginPath();
+    items.forEach((s, i) => { const [x, y] = pt(i, Math.min(scoreOf(s) / maxScore, 1)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke();
+    items.forEach((s, i) => {
+      const [x, y] = pt(i, Math.min(scoreOf(s) / maxScore, 1));
+      ctx.fillStyle = dot; ctx.beginPath(); ctx.arc(x, y, 2.6, 0, Math.PI * 2); ctx.fill();
+    });
+  }
+  // 製造業平均（オレンジ）を先に → 自社（ブルー）を上に重ねる
+  drawSeries(s => s.avg,   "rgba(207,143,74,0.30)",  "#cf8f4a", "#e9c79f");  // 業界平均：半透明オレンジ／ダークオレンジ
+  drawSeries(s => s.score, "rgba(107,151,196,0.34)", "#8fb4d6", "#cfe0f0");  // 自社：半透明ブルー／ネイビー
 
   // 軸ラベル（項目名＋スコア）
   items.forEach((s, i) => {
