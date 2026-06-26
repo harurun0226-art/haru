@@ -518,14 +518,18 @@ function drawRadar(canvasId, items, cssH) {
   for (let i = 0; i < N; i++) { const [x, y] = pt(i, 1); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke(); }
 
   // データポリゴン（系列ごとに描画）
+  // 0点でも頂点が中心の一点に潰れないよう、描画半径に小さな下限(MIN_FRAC)を設ける
+  // → 頂点が必ず各軸上の別々の点になり、多角形が中心で自己交差（X字）しない（スコア表示は0のまま）
+  const MIN_FRAC = 0.04;
   function drawSeries(scoreOf, fill, stroke, dot) {
+    const fracOf = s => Math.max(MIN_FRAC, Math.min(scoreOf(s) / maxScore, 1));
     ctx.beginPath();
-    items.forEach((s, i) => { const [x, y] = pt(i, Math.min(scoreOf(s) / maxScore, 1)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    items.forEach((s, i) => { const [x, y] = pt(i, fracOf(s)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
     ctx.closePath();
     ctx.fillStyle = fill; ctx.fill();
     ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke();
     items.forEach((s, i) => {
-      const [x, y] = pt(i, Math.min(scoreOf(s) / maxScore, 1));
+      const [x, y] = pt(i, fracOf(s));
       ctx.fillStyle = dot; ctx.beginPath(); ctx.arc(x, y, 2.6, 0, Math.PI * 2); ctx.fill();
     });
   }
