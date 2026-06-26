@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI財務分析ダッシュボード</title>
+<style>
+  :root {
+    --serif: "Yu Mincho","YuMincho","Hiragino Mincho ProN","Noto Serif JP",serif;
+    --sans: "Yu Gothic","YuGothic","Hiragino Kaku Gothic ProN","Noto Sans JP","Meiryo",sans-serif;
+    --bg:     #14181e;
+    --bg2:    #1b212a;
+    --panel:  #20272f;
+    --panel2: #262e38;
+    --ink:    #ece7da;
+    --sub:    #97a0ab;
+    --rule:   #313a45;
+    --rule2:  #414d5a;
+    --accent: #8fb4d6;
+    --pos:    #5aa873;
+    --neg:    #cf7068;
+    --blue:   #6b97c4;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: var(--sans); color: var(--ink);
+    background: linear-gradient(180deg, #11151b 0%, #161b22 100%);
+    margin: 0; padding: 34px 18px 60px; line-height: 1.75;
+    font-feature-settings: "palt";
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  /* ① ヘッダー */
+  header.masthead {
+    border: 1px solid var(--rule2); border-radius: 4px;
+    background: linear-gradient(180deg, var(--panel) 0%, var(--bg2) 100%);
+    padding: 28px 32px; text-align: center; margin-bottom: 22px;
+  }
+  .overline { font-size: 11px; letter-spacing: .42em; color: var(--accent); text-indent: .42em; margin: 0 0 8px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 28px; letter-spacing: .12em; margin: 0; color: var(--ink); }
+  .subtitle { margin: 10px 0 0; font-size: 12.5px; color: var(--sub); letter-spacing: .14em; }
+
+  /* ② KPIカード */
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 24px; }
+  .kpi {
+    background: linear-gradient(180deg, var(--panel2) 0%, var(--panel) 100%);
+    border: 1px solid var(--rule2); border-radius: 4px; padding: 16px 16px 15px;
+    position: relative; overflow: hidden;
+  }
+  .kpi::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background: var(--accent); }
+  .kpi .label { font-size: 11.5px; color: var(--sub); letter-spacing: .1em; margin: 0 0 7px; }
+  .kpi .value {
+    font-family: var(--serif); font-variant-numeric: tabular-nums; letter-spacing: .02em;
+    font-size: 21px; font-weight: 600; margin: 0; white-space: nowrap;
+  }
+  .kpi.pos::before { background: var(--pos); }
+  .kpi.blue::before { background: var(--blue); }
+
+  /* ③ 3列レイアウト */
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card {
+    background: linear-gradient(180deg, var(--panel) 0%, var(--bg2) 100%);
+    border: 1px solid var(--rule2); border-radius: 4px; padding: 18px 18px 16px;
+  }
+  .card h2 {
+    font-family: var(--serif); font-weight: 600; font-size: 15.5px; letter-spacing: .08em;
+    margin: 0 0 4px; padding-bottom: 9px; border-bottom: 1px solid var(--rule2);
+    display: flex; align-items: baseline; gap: .55em;
+  }
+  .card h2 .no { font-size: 12px; color: var(--accent); letter-spacing: .1em; }
+  .card .desc { font-size: 11.5px; color: var(--sub); margin: 7px 0 4px; }
+  canvas { width: 100%; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 7px 14px; margin-top: 10px; font-size: 11px; color: var(--sub); }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend i { width: 11px; height: 11px; border-radius: 1px; display: inline-block; }
+
+  @media (max-width: 880px) {
+    .grid3 { grid-template-columns: 1fr; }
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 520px) {
+    h1 { font-size: 22px; }
+    .kpi .value { font-size: 18px; }
+  }
+
+  footer { max-width: 1180px; margin: 26px auto 0; text-align: center; font-size: 11px; color: var(--sub); letter-spacing: .08em; line-height: 1.9; }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ① ヘッダー -->
+  <header class="masthead">
+    <p class="overline">INTEGRATED FINANCIAL DASHBOARD</p>
+    <h1>AI財務分析ダッシュボード</h1>
+    <p class="subtitle">PL・BS・CF を統合分析</p>
+  </header>
+
+  <!-- ② KPIカード -->
+  <div class="kpis" id="kpis"></div>
+
+  <!-- ③ 3列レイアウト -->
+  <div class="grid3">
+    <section class="card">
+      <h2><span class="no">PL</span> 損益構造</h2>
+      <p class="desc">売上高から各利益段階へ、費用が差し引かれる流れ（万円）。</p>
+      <canvas id="plChart"></canvas>
+      <div class="legend" id="plLegend"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="no">BS</span> 財務体質</h2>
+      <p class="desc">左＝資産、右＝負債・純資産。高さが金額に比例（貸借一致）。</p>
+      <canvas id="bsChart"></canvas>
+      <div class="legend" id="bsLegend"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="no">CF</span> 資金の流れ</h2>
+      <p class="desc">営業・投資・財務の各CFと、その合計＝現金増減（万円）。</p>
+      <canvas id="cfChart"></canvas>
+      <div class="legend" id="cfLegend"></div>
+    </section>
+  </div>
+
+</div>
+<footer>
+  AI財務分析ダッシュボード ／ 単一ファイル・外部ライブラリ不使用<br>
+  制作：大塚　春 ｜ 2026年6月 ｜ GitHub: <a href="https://github.com/harurun0226-art" target="_blank" rel="noopener">https://github.com/harurun0226-art</a>
+</footer>
+
+<script>
+"use strict";
+
+// ===== 固定データ（例題）=====
+const D = {
+  // PL
+  sales: 5000000, cogs: 3000000,
+  salary: 500000, ad: 200000, rent: 100000,
+  nonopRev: 50000, nonopExp: 30000, special: 0, tax: 220000,
+  // BS
+  currentAssets: 2000000, fixedAssets: 3000000,
+  currentLiab: 1200000, fixedLiab: 1800000, equity: 2000000,
+  // CF
+  cfOp: 800000, cfInv: -500000, cfFin: -200000,
+};
+
+// ===== 計算 =====
+const sga = D.salary + D.ad + D.rent;
+const grossProfit = D.sales - D.cogs;
+const operating = grossProfit - sga;
+const ordinary = operating + D.nonopRev - D.nonopExp;
+const pretax = ordinary + D.special;
+const net = pretax - D.tax;
+
+const totalAssets = D.currentAssets + D.fixedAssets;
+const totalLiab = D.currentLiab + D.fixedLiab;
+const totalLE = totalLiab + D.equity;
+const equityRatio = D.equity / totalAssets;
+
+const cashChange = D.cfOp + D.cfInv + D.cfFin;
+
+// ===== 共通ヘルパー =====
+const yen = v => (v < 0 ? "−" : "") + "¥" + Math.abs(v).toLocaleString("ja-JP");
+const man = v => v === 0 ? "0" : (v / 10000).toLocaleString("ja-JP") + "万";
+const pct = v => (v * 100).toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
+const serifFont = () => getComputedStyle(document.body).getPropertyValue("--serif");
+
+// ===== ② KPIカード =====
+(function renderKpis() {
+  const cards = [
+    { label: "売上高",     value: yen(D.sales),     cls: "" },
+    { label: "営業利益",   value: yen(operating),   cls: operating >= 0 ? "pos" : "" },
+    { label: "当期純利益", value: yen(net),         cls: net >= 0 ? "pos" : "" },
+    { label: "営業CF",     value: yen(D.cfOp),      cls: D.cfOp >= 0 ? "pos" : "" },
+    { label: "自己資本比率", value: pct(equityRatio), cls: "blue" },
+  ];
+  document.getElementById("kpis").innerHTML = cards.map(c =>
+    `<div class="kpi ${c.cls}"><p class="label">${c.label}</p><p class="value">${c.value}</p></div>`).join("");
+})();
+
+// ===== 棒グラフ共通描画（ゼロ基準・正は上/負は下）=====
+function drawBars(canvasId, legendId, items, cssH) {
+  const canvas = document.getElementById(canvasId);
+  const cssW = canvas.clientWidth || 320;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.height = Math.round(cssH * dpr);
+  canvas.width = Math.round(cssW * dpr);
+  canvas.style.height = cssH + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const m = { top: 30, right: 12, bottom: 42, left: 52 };
+  const plotW = cssW - m.left - m.right;
+  const plotH = cssH - m.top - m.bottom;
+  const serif = serifFont();
+
+  const values = items.map(s => s.value);
+  const yMax = Math.max(...values, 0);
+  const yMin = Math.min(...values, 0);
+  const range = (yMax - yMin) || 1;
+  const yOf = v => m.top + plotH * (1 - (v - yMin) / range);
+  const zeroY = yOf(0);
+
+  // 目盛り
+  const ticks = 4;
+  ctx.lineWidth = 1;
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= ticks; i++) {
+    const val = yMin + range * i / ticks;
+    const y = yOf(val);
+    ctx.strokeStyle = "rgba(255,255,255,0.07)";
+    ctx.beginPath(); ctx.moveTo(m.left, y); ctx.lineTo(m.left + plotW, y); ctx.stroke();
+    ctx.fillStyle = "#8a939e";
+    ctx.font = "10px " + serif;
+    ctx.textAlign = "right";
+    ctx.fillText(man(Math.round(val)), m.left - 6, y);
+  }
+  // ゼロ線
+  ctx.strokeStyle = "rgba(255,255,255,0.28)";
+  ctx.beginPath(); ctx.moveTo(m.left, zeroY); ctx.lineTo(m.left + plotW, zeroY); ctx.stroke();
+
+  // バー
+  const n = items.length;
+  const slot = plotW / n;
+  const barW = Math.min(slot * 0.58, 56);
+  items.forEach((s, i) => {
+    const cx = m.left + slot * (i + 0.5);
+    const x = cx - barW / 2;
+    const yTop = yOf(Math.max(s.value, 0));
+    const yBot = yOf(Math.min(s.value, 0));
+    const h = Math.max(yBot - yTop, 1);
+    ctx.fillStyle = s.color;
+    ctx.fillRect(x, yTop, barW, h);
+
+    // 金額
+    ctx.fillStyle = "#ece7da";
+    ctx.font = "10.5px " + serif;
+    ctx.textAlign = "center";
+    ctx.textBaseline = s.value >= 0 ? "bottom" : "top";
+    ctx.fillText(man(s.value), cx, s.value >= 0 ? yTop - 4 : yBot + 4);
+
+    // ラベル
+    ctx.fillStyle = "#97a0ab";
+    ctx.font = "10.5px " + serif;
+    ctx.textBaseline = "top";
+    const label = s.short || s.name;
+    ctx.fillText(label, cx, m.top + plotH + 8);
+  });
+
+  if (legendId) {
+    document.getElementById(legendId).innerHTML = items.map(s =>
+      `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+  }
+}
+
+// ===== PL：階段グラフ =====
+const PL = [
+  { name: "売上高",     short: "売上",   value: D.sales,     color: "#6b97c4" },
+  { name: "売上総利益", short: "粗利",   value: grossProfit, color: "#3f8f5f" },
+  { name: "営業利益",   short: "営業",   value: operating,   color: "#5aa873" },
+  { name: "経常利益",   short: "経常",   value: ordinary,    color: "#7cc093" },
+  { name: "税引前利益", short: "税引前", value: pretax,      color: "#b6bf6e" },
+  { name: "当期純利益", short: "純利益", value: net,         color: net >= 0 ? "#5aa873" : "#cf7068" },
+];
+
+// ===== BS：構成図（2列・面積比例）=====
+const COL = {
+  ca: "#7fa8c9", fa: "#3f6286", cl: "#d08a86", fl: "#b4534b", eq: "#5aa873",
+};
+const BS_LEFT = [
+  { name: "流動資産", value: D.currentAssets, color: COL.ca },
+  { name: "固定資産", value: D.fixedAssets,   color: COL.fa },
+];
+const BS_RIGHT = [
+  { name: "流動負債", value: D.currentLiab, color: COL.cl },
+  { name: "固定負債", value: D.fixedLiab,   color: COL.fl },
+  { name: "純資産",   value: D.equity,      color: COL.eq },
+];
+
+function drawBS(canvasId, legendId, cssH) {
+  const canvas = document.getElementById(canvasId);
+  const cssW = canvas.clientWidth || 320;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.height = Math.round(cssH * dpr);
+  canvas.width = Math.round(cssW * dpr);
+  canvas.style.height = cssH + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const m = { top: 34, right: 14, bottom: 26, left: 14 };
+  const plotW = cssW - m.left - m.right;
+  const plotH = cssH - m.top - m.bottom;
+  const serif = serifFont();
+
+  const colGap = Math.min(plotW * 0.10, 36);
+  const colW = (plotW - colGap) / 2;
+  const leftX = m.left;
+  const rightX = m.left + colW + colGap;
+
+  const basis = Math.max(totalAssets, totalLE);
+  const scale = plotH / basis;
+
+  // 列見出し
+  ctx.fillStyle = "#8fb4d6";
+  ctx.font = "12px " + serif;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("資産", leftX + colW / 2, m.top - 12);
+  ctx.fillText("負債・純資産", rightX + colW / 2, m.top - 12);
+
+  function column(x, blocks) {
+    let y = m.top;
+    blocks.forEach(b => {
+      const h = b.value * scale;
+      ctx.fillStyle = b.color;
+      ctx.fillRect(x, y, colW, h);
+      ctx.strokeStyle = "#1b212a";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x, y, colW, h);
+
+      const cx = x + colW / 2, cy = y + h / 2;
+      const lum = parseInt(b.color.slice(1,3),16)*0.299 + parseInt(b.color.slice(3,5),16)*0.587 + parseInt(b.color.slice(5,7),16)*0.114;
+      ctx.fillStyle = lum > 150 ? "#1a1d22" : "#f3efe4";
+      ctx.textAlign = "center";
+      if (h >= 34) {
+        ctx.font = "11.5px " + serif; ctx.textBaseline = "bottom";
+        ctx.fillText(b.name, cx, cy - 1);
+        ctx.font = "10.5px " + serif; ctx.textBaseline = "top";
+        ctx.fillText(man(b.value), cx, cy + 2);
+      } else {
+        ctx.font = "10.5px " + serif; ctx.textBaseline = "middle";
+        ctx.fillText(b.name + " " + man(b.value), cx, cy);
+      }
+      y += h;
+    });
+  }
+  column(leftX, BS_LEFT);
+  column(rightX, BS_RIGHT);
+
+  if (legendId) {
+    document.getElementById(legendId).innerHTML = [...BS_LEFT, ...BS_RIGHT].map(s =>
+      `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+  }
+}
+
+// ===== CF：フロー図 =====
+const CF = [
+  { name: "営業CF",   short: "営業",   value: D.cfOp,      color: "#5aa873" },
+  { name: "投資CF",   short: "投資",   value: D.cfInv,     color: "#cf7068" },
+  { name: "財務CF",   short: "財務",   value: D.cfFin,     color: "#cf7068" },
+  { name: "現金増減", short: "現金増減", value: cashChange, color: "#6b97c4" },
+];
+
+// ===== 描画 & リサイズ =====
+function drawAll() {
+  drawBars("plChart", "plLegend", PL, 300);
+  drawBS("bsChart", "bsLegend", 300);
+  drawBars("cfChart", "cfLegend", CF, 300);
+}
+drawAll();
+let rT;
+window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(drawAll, 130); });
+</script>
+</body>
+</html>
