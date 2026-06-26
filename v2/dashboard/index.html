@@ -87,6 +87,16 @@
   footer { max-width: 1180px; margin: 26px auto 0; text-align: center; font-size: 11px; color: var(--sub); letter-spacing: .08em; line-height: 1.9; }
   footer a { color: var(--accent); text-decoration: none; }
   footer a:hover { text-decoration: underline; }
+
+  /* ④ レーダーチャート */
+  .radar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: center; }
+  @media (max-width: 880px) { .radar-grid { grid-template-columns: 1fr; } }
+  table.score { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+  table.score th, table.score td { padding: 8px 8px; border-bottom: 1px solid var(--rule); }
+  table.score thead th { color: var(--sub); font-weight: 600; font-size: 11px; letter-spacing: .08em; text-align: left; border-bottom: 1px solid var(--rule2); }
+  table.score td.num, table.score th.num { text-align: right; font-family: var(--serif); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+  table.score td:first-child { color: var(--ink); }
+  table.score tr.total td { font-weight: 600; border-top: 1px solid var(--rule2); color: var(--ink); }
 </style>
 </head>
 <body>
@@ -125,6 +135,22 @@
       <div class="legend" id="cfLegend"></div>
     </section>
   </div>
+
+  <!-- ④ レーダーチャート -->
+  <section class="card" style="margin-top:16px;">
+    <h2><span class="no">RADAR</span> 財務分析レーダーチャート</h2>
+    <p class="desc">収益性・安全性・成長性・効率性・耐性の5軸評価（各25点満点）。</p>
+    <div class="radar-grid">
+      <canvas id="radarChart"></canvas>
+      <div>
+        <table class="score">
+          <thead><tr><th>評価軸（指標）</th><th class="num">元の数値</th><th class="num">スコア</th></tr></thead>
+          <tbody id="radarTable"></tbody>
+        </table>
+        <p class="desc" style="margin-top:10px;">各軸は目安値で25点満点に換算（収益性10%・安全性50%・成長性20%・効率性1.5回・耐性200%＝各25点。上限25点）。</p>
+      </div>
+    </div>
+  </section>
 
 </div>
 <footer>
@@ -357,11 +383,88 @@ const CF = [
   { name: "現金増減", short: "現金増減", value: cashChange, color: "#6b97c4" },
 ];
 
+// ===== ④ レーダーチャート =====
+// 各軸：目安値で25点満点に換算（上限25点）
+const RADAR = [
+  { name: "収益性", metric: "売上高営業利益率", raw: operating / D.sales * 100,            unit: "%", target: 10 },
+  { name: "安全性", metric: "自己資本比率",     raw: equityRatio * 100,                    unit: "%", target: 50 },
+  { name: "成長性", metric: "営業CFマージン",   raw: D.cfOp / D.sales * 100,               unit: "%", target: 20 },
+  { name: "効率性", metric: "総資産回転率",     raw: D.sales / totalAssets,                unit: "回", target: 1.5 },
+  { name: "耐性",   metric: "流動比率",         raw: D.currentAssets / D.currentLiab * 100, unit: "%", target: 200 },
+];
+RADAR.forEach(a => a.score = Math.min(a.raw / a.target * 25, 25));
+const radarTotal = RADAR.reduce((s, a) => s + a.score, 0);
+const fmtRaw = a => a.raw.toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + a.unit;
+
+// スコア表
+document.getElementById("radarTable").innerHTML =
+  RADAR.map(a =>
+    `<tr><td>${a.name}<span style="color:var(--sub);font-size:11px;">（${a.metric}）</span></td>` +
+    `<td class="num">${fmtRaw(a)}</td><td class="num">${a.score.toFixed(1)} / 25</td></tr>`).join("") +
+  `<tr class="total"><td>総合スコア</td><td class="num">—</td><td class="num">${radarTotal.toFixed(1)} / 125</td></tr>`;
+
+function drawRadar(canvasId, items, cssH) {
+  const canvas = document.getElementById(canvasId);
+  const cssW = canvas.clientWidth || 360;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.height = Math.round(cssH * dpr);
+  canvas.width = Math.round(cssW * dpr);
+  canvas.style.height = cssH + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  const serif = serifFont();
+
+  const cx = cssW / 2, cy = cssH / 2 + 2;
+  const R = Math.min(cssH / 2 - 46, cssW / 2 - 80);
+  const N = items.length, maxScore = 25;
+  const ang = i => (-90 + 360 / N * i) * Math.PI / 180;
+  const pt = (i, frac) => [cx + R * frac * Math.cos(ang(i)), cy + R * frac * Math.sin(ang(i))];
+
+  // 同心ペンタゴンの目盛り
+  ctx.lineWidth = 1;
+  [0.2, 0.4, 0.6, 0.8, 1.0].forEach(f => {
+    ctx.strokeStyle = "rgba(255,255,255,0.09)";
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) { const [x, y] = pt(i, f); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.closePath(); ctx.stroke();
+  });
+  // 軸（スポーク）
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
+  for (let i = 0; i < N; i++) { const [x, y] = pt(i, 1); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke(); }
+
+  // データポリゴン（塗り＝半透明ブルー、枠線＝ネイビーブルー）
+  ctx.beginPath();
+  items.forEach((s, i) => { const [x, y] = pt(i, Math.min(s.score / maxScore, 1)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.closePath();
+  ctx.fillStyle = "rgba(107,151,196,0.32)";
+  ctx.fill();
+  ctx.strokeStyle = "#8fb4d6"; ctx.lineWidth = 2; ctx.stroke();
+  // 頂点ドット
+  items.forEach((s, i) => {
+    const [x, y] = pt(i, Math.min(s.score / maxScore, 1));
+    ctx.fillStyle = "#cfe0f0"; ctx.beginPath(); ctx.arc(x, y, 2.6, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // 軸ラベル（項目名＋スコア）
+  items.forEach((s, i) => {
+    const [lx, ly] = pt(i, 1.15);
+    const cos = Math.cos(ang(i));
+    ctx.textAlign = Math.abs(cos) < 0.35 ? "center" : (cos > 0 ? "left" : "right");
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#ece7da"; ctx.font = "12px " + serif;
+    ctx.fillText(s.name, lx, ly - 7);
+    ctx.fillStyle = "#8fb4d6"; ctx.font = "11px " + serif;
+    ctx.fillText(s.score.toFixed(1) + "点", lx, ly + 7);
+  });
+}
+
 // ===== 描画 & リサイズ =====
 function drawAll() {
   drawBars("plChart", "plLegend", PL, 300);
   drawBS("bsChart", "bsLegend", 300);
   drawBars("cfChart", "cfLegend", CF, 300);
+  drawRadar("radarChart", RADAR, 340);
 }
 drawAll();
 let rT;
