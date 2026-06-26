@@ -158,6 +158,14 @@
     </div>
   </section>
 
+  <!-- ⑤ 複数年度比較 -->
+  <section class="card" style="margin-top:16px;">
+    <h2><span class="no">TREND</span> 複数年度比較グラフ</h2>
+    <p class="desc">売上高・営業利益・当期純利益（左軸：万円）と自己資本比率（右軸：％）の5年推移。</p>
+    <canvas id="trendChart"></canvas>
+    <div class="legend" id="trendLegend"></div>
+  </section>
+
 </div>
 <footer>
   AI財務分析ダッシュボード ／ 単一ファイル・外部ライブラリ不使用<br>
@@ -474,12 +482,89 @@ function drawRadar(canvasId, items, cssH) {
   });
 }
 
+// ===== ⑤ 複数年度比較（折れ線・左軸=万円／右軸=％）=====
+const TREND = {
+  years: [2020, 2021, 2022, 2023, 2024],
+  series: [
+    { name: "売上高",       axis: "L", color: "#6b97c4", data: [380, 410, 450, 480, 500] }, // ネイビー
+    { name: "営業利益",     axis: "L", color: "#5aa873", data: [15, 18, 20, 19, 20] },       // グリーン
+    { name: "当期純利益",   axis: "L", color: "#7cc093", data: [8, 10, 12, 11, 12] },        // ライトグリーン
+    { name: "自己資本比率", axis: "R", color: "#cf8f4a", data: [32, 35, 37, 39, 40] },       // オレンジ（右軸）
+  ],
+};
+const TREND_LMAX = 500; // 左軸：万円
+const TREND_RMAX = 50;  // 右軸：％
+
+// 凡例
+document.getElementById("trendLegend").innerHTML = TREND.series.map(s =>
+  `<span><i style="background:${s.color}"></i>${s.name}${s.axis === "R" ? "（右軸）" : ""}</span>`).join("");
+
+function drawTrend(canvasId, cssH) {
+  const canvas = document.getElementById(canvasId);
+  const cssW = canvas.clientWidth || 600;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.height = Math.round(cssH * dpr);
+  canvas.width = Math.round(cssW * dpr);
+  canvas.style.height = cssH + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  const serif = serifFont();
+
+  const m = { top: 26, right: 56, bottom: 38, left: 54 };
+  const plotW = cssW - m.left - m.right;
+  const plotH = cssH - m.top - m.bottom;
+  const x0 = m.left, yB = m.top + plotH;
+  const yL = v => yB - (v / TREND_LMAX) * plotH;  // 左軸：金額
+  const yR = v => yB - (v / TREND_RMAX) * plotH;  // 右軸：割合
+  const N = TREND.years.length;
+  const xOf = i => x0 + (N === 1 ? 0 : plotW * (i / (N - 1)));
+
+  // 横グリッド＋左右軸目盛り（6本：0〜max）
+  const ticks = 5;
+  ctx.textBaseline = "middle"; ctx.lineWidth = 1;
+  for (let i = 0; i <= ticks; i++) {
+    const y = yB - plotH * (i / ticks);
+    ctx.strokeStyle = "rgba(255,255,255,0.07)";
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + plotW, y); ctx.stroke();
+    ctx.fillStyle = "#8a939e"; ctx.font = "10px " + serif; ctx.textAlign = "right";
+    ctx.fillText(String(TREND_LMAX * i / ticks), x0 - 7, y);            // 左軸（万円）
+    ctx.fillStyle = "#cf8f4a"; ctx.textAlign = "left";
+    ctx.fillText((TREND_RMAX * i / ticks) + "%", x0 + plotW + 7, y);    // 右軸（％）
+  }
+  // 軸タイトル
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = "#8a939e"; ctx.font = "10px " + serif; ctx.textAlign = "left";
+  ctx.fillText("万円", x0 - 10, m.top - 10);
+  ctx.fillStyle = "#cf8f4a"; ctx.textAlign = "right";
+  ctx.fillText("％", x0 + plotW + 20, m.top - 10);
+
+  // 年度（横軸）
+  ctx.fillStyle = "#97a0ab"; ctx.font = "10.5px " + serif; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  TREND.years.forEach((yr, i) => ctx.fillText(yr + "年", xOf(i), yB + 9));
+
+  // 折れ線＋データ点
+  TREND.series.forEach(s => {
+    const yfn = s.axis === "R" ? yR : yL;
+    ctx.strokeStyle = s.color; ctx.lineWidth = 2;
+    ctx.beginPath();
+    s.data.forEach((v, i) => { const x = xOf(i), y = yfn(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+    s.data.forEach((v, i) => {
+      const x = xOf(i), y = yfn(v);
+      ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#161b22"; ctx.lineWidth = 1; ctx.stroke();
+    });
+  });
+}
+
 // ===== 描画 & リサイズ =====
 function drawAll() {
   drawBars("plChart", "plLegend", PL, 300);
   drawBS("bsChart", "bsLegend", 300);
   drawBars("cfChart", "cfLegend", CF, 300);
   drawRadar("radarChart", RADAR, 340);
+  drawTrend("trendChart", 320);
 }
 drawAll();
 let rT;
