@@ -161,7 +161,7 @@
   <!-- ⑤ 複数年度比較 -->
   <section class="card" style="margin-top:16px;">
     <h2><span class="no">TREND</span> 複数年度比較グラフ</h2>
-    <p class="desc">売上高・営業利益・当期純利益（左軸：万円）と自己資本比率（右軸：％）の5年推移。</p>
+    <p class="desc">5年推移。<span style="color:#6b97c4;">青＝売上高（左外軸・万円）</span>／<span style="color:#5aa873;">緑＝営業利益・当期純利益（左内軸・万円）</span>／<span style="color:#cf8f4a;">橙＝自己資本比率（右軸・％）</span>。利益は売上と桁が違うため専用スケールで表示。</p>
     <canvas id="trendChart"></canvas>
     <div class="legend" id="trendLegend"></div>
   </section>
@@ -483,21 +483,25 @@ function drawRadar(canvasId, items, cssH) {
 }
 
 // ===== ⑤ 複数年度比較（折れ線・左軸=万円／右軸=％）=====
+// 売上は桁が大きいので専用軸、利益2本は専用軸、自己資本比率は右軸（％）
 const TREND = {
   years: [2020, 2021, 2022, 2023, 2024],
   series: [
-    { name: "売上高",       axis: "L", color: "#6b97c4", data: [380, 410, 450, 480, 500] }, // ネイビー
-    { name: "営業利益",     axis: "L", color: "#5aa873", data: [15, 18, 20, 19, 20] },       // グリーン
-    { name: "当期純利益",   axis: "L", color: "#7cc093", data: [8, 10, 12, 11, 12] },        // ライトグリーン
-    { name: "自己資本比率", axis: "R", color: "#cf8f4a", data: [32, 35, 37, 39, 40] },       // オレンジ（右軸）
+    { name: "売上高",       scale: "sales",  color: "#6b97c4", data: [380, 410, 450, 480, 500] }, // ネイビー（左外）
+    { name: "営業利益",     scale: "profit", color: "#5aa873", data: [15, 18, 20, 19, 20] },       // グリーン（左内）
+    { name: "当期純利益",   scale: "profit", color: "#7cc093", data: [8, 10, 12, 11, 12] },        // ライトグリーン（左内）
+    { name: "自己資本比率", scale: "ratio",  color: "#cf8f4a", data: [32, 35, 37, 39, 40] },       // オレンジ（右軸）
   ],
 };
-const TREND_LMAX = 500; // 左軸：万円
-const TREND_RMAX = 50;  // 右軸：％
+const TREND_SALES_MAX = 500;  // 左外軸：売上（万円）
+const TREND_PROFIT_MAX = 25;  // 左内軸：利益（万円）
+const TREND_RATIO_MAX = 50;   // 右軸：自己資本比率（％）
 
 // 凡例
-document.getElementById("trendLegend").innerHTML = TREND.series.map(s =>
-  `<span><i style="background:${s.color}"></i>${s.name}${s.axis === "R" ? "（右軸）" : ""}</span>`).join("");
+document.getElementById("trendLegend").innerHTML = TREND.series.map(s => {
+  const tag = s.scale === "sales" ? "（左外軸）" : s.scale === "profit" ? "（左内軸）" : "（右軸）";
+  return `<span><i style="background:${s.color}"></i>${s.name}${tag}</span>`;
+}).join("");
 
 function drawTrend(canvasId, cssH) {
   const canvas = document.getElementById(canvasId);
@@ -511,33 +515,36 @@ function drawTrend(canvasId, cssH) {
   ctx.clearRect(0, 0, cssW, cssH);
   const serif = serifFont();
 
-  const m = { top: 26, right: 56, bottom: 38, left: 54 };
+  const m = { top: 30, right: 52, bottom: 38, left: 90 };
   const plotW = cssW - m.left - m.right;
   const plotH = cssH - m.top - m.bottom;
   const x0 = m.left, yB = m.top + plotH;
-  const yL = v => yB - (v / TREND_LMAX) * plotH;  // 左軸：金額
-  const yR = v => yB - (v / TREND_RMAX) * plotH;  // 右軸：割合
+  const ySales  = v => yB - (v / TREND_SALES_MAX) * plotH;   // 左外軸：売上
+  const yProfit = v => yB - (v / TREND_PROFIT_MAX) * plotH;  // 左内軸：利益
+  const yRatio  = v => yB - (v / TREND_RATIO_MAX) * plotH;   // 右軸：割合
+  const yOf = s => s.scale === "sales" ? ySales : s.scale === "profit" ? yProfit : yRatio;
   const N = TREND.years.length;
   const xOf = i => x0 + (N === 1 ? 0 : plotW * (i / (N - 1)));
 
-  // 横グリッド＋左右軸目盛り（6本：0〜max）
+  // 横グリッド＋3軸の目盛り（6本：各0〜max、グリッド共通／軸の色＝線の色）
   const ticks = 5;
-  ctx.textBaseline = "middle"; ctx.lineWidth = 1;
+  ctx.textBaseline = "middle"; ctx.lineWidth = 1; ctx.font = "10px " + serif;
   for (let i = 0; i <= ticks; i++) {
     const y = yB - plotH * (i / ticks);
     ctx.strokeStyle = "rgba(255,255,255,0.07)";
     ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + plotW, y); ctx.stroke();
-    ctx.fillStyle = "#8a939e"; ctx.font = "10px " + serif; ctx.textAlign = "right";
-    ctx.fillText(String(TREND_LMAX * i / ticks), x0 - 7, y);            // 左軸（万円）
-    ctx.fillStyle = "#cf8f4a"; ctx.textAlign = "left";
-    ctx.fillText((TREND_RMAX * i / ticks) + "%", x0 + plotW + 7, y);    // 右軸（％）
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#6b97c4"; ctx.fillText(String(TREND_SALES_MAX * i / ticks), 40, y);        // 売上（左外）
+    ctx.fillStyle = "#5aa873"; ctx.fillText(String(TREND_PROFIT_MAX * i / ticks), x0 - 8, y);   // 利益（左内）
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#cf8f4a"; ctx.fillText((TREND_RATIO_MAX * i / ticks) + "%", x0 + plotW + 7, y); // ％（右）
   }
-  // 軸タイトル
-  ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = "#8a939e"; ctx.font = "10px " + serif; ctx.textAlign = "left";
-  ctx.fillText("万円", x0 - 10, m.top - 10);
-  ctx.fillStyle = "#cf8f4a"; ctx.textAlign = "right";
-  ctx.fillText("％", x0 + plotW + 20, m.top - 10);
+  // 軸見出し（上部）
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "center";
+  ctx.fillStyle = "#6b97c4"; ctx.fillText("売上(万)", 24, m.top - 12);
+  ctx.fillStyle = "#5aa873"; ctx.fillText("利益(万)", 70, m.top - 12);
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#cf8f4a"; ctx.fillText("％", x0 + plotW + 7, m.top - 12);
 
   // 年度（横軸）
   ctx.fillStyle = "#97a0ab"; ctx.font = "10.5px " + serif; ctx.textAlign = "center"; ctx.textBaseline = "top";
@@ -545,7 +552,7 @@ function drawTrend(canvasId, cssH) {
 
   // 折れ線＋データ点
   TREND.series.forEach(s => {
-    const yfn = s.axis === "R" ? yR : yL;
+    const yfn = yOf(s);
     ctx.strokeStyle = s.color; ctx.lineWidth = 2;
     ctx.beginPath();
     s.data.forEach((v, i) => { const x = xOf(i), y = yfn(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
