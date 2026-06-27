@@ -520,7 +520,11 @@ function renderGrade() {
   // 各軸バー：スコアが高いほど緑、低いほど赤（赤→黄→緑をHSLで補間）
   const bars = RADAR.map(a => {
     const ratio = Math.max(0, Math.min(a.score / 25, 1));
-    const col = `hsl(${Math.round(ratio * 120)}, 55%, 48%)`;
+    // スコア(25点満点)に応じた4段階の色
+    const col = a.score >= 20 ? "#4caf50"   // 20〜25点：緑
+              : a.score >= 13 ? "#8bc34a"   // 13〜19点：黄緑
+              : a.score >= 8  ? "#ff9800"   // 8〜12点：オレンジ
+              :                 "#f44336";  // 0〜7点：赤
     return `<div class="axis-row">` +
       `<span class="ax-name">${a.name}</span>` +
       `<span class="ax-track"><span class="ax-fill" style="width:${(ratio * 100).toFixed(0)}%;background:${col}"></span></span>` +
