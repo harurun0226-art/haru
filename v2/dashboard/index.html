@@ -142,8 +142,8 @@
   .axis-bars { display: flex; flex-direction: column; gap: 10px; }
   .axis-row { display: grid; grid-template-columns: 50px 1fr 58px; align-items: center; gap: 10px; font-size: 12.5px; }
   .axis-row .ax-name { color: var(--sub); }
-  .axis-row .ax-track { background: rgba(255,255,255,0.06); border-radius: 3px; height: 12px; overflow: hidden; }
-  .axis-row .ax-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+  .axis-row .ax-track { display: block; background: rgba(255,255,255,0.06); border-radius: 3px; height: 12px; overflow: hidden; }
+  .axis-row .ax-fill { display: block; height: 100%; border-radius: 3px; transition: width .3s; }
   .axis-row .ax-val { text-align: right; font-family: var(--serif); font-variant-numeric: tabular-nums; color: var(--ink); }
 </style>
 </head>
