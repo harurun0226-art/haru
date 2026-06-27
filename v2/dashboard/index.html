@@ -314,7 +314,7 @@ function drawBars(canvasId, legendId, items, cssH) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
-  const m = { top: 30, right: 12, bottom: 42, left: 52 };
+  const m = { top: 30, right: 12, bottom: 54, left: 52 };
   const plotW = cssW - m.left - m.right;
   const plotH = cssH - m.top - m.bottom;
   const serif = serifFont();
@@ -357,21 +357,24 @@ function drawBars(canvasId, legendId, items, cssH) {
     ctx.fillStyle = s.color;
     ctx.fillRect(x, yTop, barW, h);
 
-    // 金額ラベル
-    // プラス：バーの上端の上に表示／マイナス：ゼロ線の上(zeroY-15px)に表示
-    // → マイナスのバーでも金額が横軸ラベルと重ならない
+    // 金額ラベル：プラスはバー上端の上、マイナスはバー下端の下（どちらもバーの先端の外側）
     ctx.fillStyle = "#ece7da";
     ctx.font = "10.5px " + serif;
     ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(man(s.value), cx, s.value >= 0 ? yTop - 4 : zeroY - 15);
+    if (s.value >= 0) {
+      ctx.textBaseline = "bottom";
+      ctx.fillText(man(s.value), cx, yTop - 4);
+    } else {
+      ctx.textBaseline = "top";
+      ctx.fillText(man(s.value), cx, yBot + 4);
+    }
 
     // ラベル
     ctx.fillStyle = "#97a0ab";
     ctx.font = "10.5px " + serif;
     ctx.textBaseline = "top";
     const label = s.short || s.name;
-    ctx.fillText(label, cx, m.top + plotH + 8);
+    ctx.fillText(label, cx, m.top + plotH + 24);
   });
 
   if (legendId) {
