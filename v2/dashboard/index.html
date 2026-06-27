@@ -464,15 +464,18 @@ function drawBS(canvasId, legendId, cssH) {
       y += h;
       bounds.push(y);
     });
-    // 区切り線（白・2px）：隣り合うブロックの境界に引く
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
+    // 区切り線（白の点線）：同色で隣り合うブロックの境界のみ（流動資産/固定資産・流動負債/固定負債）
+    ctx.strokeStyle = "rgba(255,255,255,0.6)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
     for (let i = 0; i < blocks.length - 1; i++) {
+      if (blocks[i].color !== blocks[i + 1].color) continue;
       ctx.beginPath();
       ctx.moveTo(x, bounds[i]);
       ctx.lineTo(x + colW, bounds[i]);
       ctx.stroke();
     }
+    ctx.setLineDash([]); // 破線設定をリセット（他の描画に影響させない）
   }
   column(leftX, BS_LEFT);
   column(rightX, BS_RIGHT);
