@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI財務分析ダッシュボード</title>
+<style>
+  :root {
+    --serif: "Yu Mincho","YuMincho","Hiragino Mincho ProN","Noto Serif JP",serif;
+    --sans: "Yu Gothic","YuGothic","Hiragino Kaku Gothic ProN","Noto Sans JP","Meiryo",sans-serif;
+    --bg:     #f5f6fa;
+    --bg2:    #ffffff;
+    --panel:  #ffffff;
+    --panel2: #ffffff;
+    --ink:    #333333;
+    --head:   #1a2340;
+    --sub:    #666666;
+    --rule:   #e2e8f0;
+    --rule2:  #e2e8f0;
+    --accent: #2563eb;
+    --pos:    #2f6b40;
+    --neg:    #c0392b;
+    --blue:   #2563eb;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: var(--sans); color: var(--ink);
+    background: #f5f6fa;
+    margin: 0; padding: 34px 18px 60px; line-height: 1.75;
+    font-feature-settings: "palt";
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  /* ① ヘッダー */
+  header.masthead {
+    border: 1px solid #1a2340; border-radius: 4px;
+    background: #1a2340;
+    padding: 28px 32px; text-align: center; margin-bottom: 22px;
+  }
+  .overline { font-size: 11px; letter-spacing: .42em; color: #93acd6; text-indent: .42em; margin: 0 0 8px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 28px; letter-spacing: .12em; margin: 0; color: #ffffff; }
+  .subtitle { margin: 10px 0 0; font-size: 12.5px; color: #c5ccdf; letter-spacing: .14em; }
+
+  /* ② KPIカード */
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 24px; }
+  .kpi {
+    background: #ffffff;
+    border: 1px solid var(--rule2); border-radius: 4px; padding: 16px 16px 15px;
+    position: relative; overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  .kpi::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background: var(--accent); }
+  .kpi .label { font-size: 11.5px; color: var(--sub); letter-spacing: .1em; margin: 0 0 7px; }
+  .kpi .value {
+    font-family: var(--serif); font-variant-numeric: tabular-nums; letter-spacing: .02em;
+    font-size: 21px; font-weight: 600; margin: 0; white-space: nowrap;
+  }
+  .kpi.pos::before { background: var(--pos); }
+  .kpi.blue::before { background: var(--blue); }
+
+  /* ③ 3列レイアウト */
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card {
+    background: #ffffff;
+    border: 1px solid var(--rule2); border-radius: 4px; padding: 18px 18px 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  .card h2 {
+    font-family: var(--serif); font-weight: 600; font-size: 15.5px; letter-spacing: .08em;
+    margin: 0 0 4px; padding-bottom: 9px; border-bottom: 1px solid var(--rule2);
+    display: flex; align-items: baseline; gap: .55em; color: var(--head);
+  }
+  .card h2 .no { font-size: 12px; color: var(--accent); letter-spacing: .1em; }
+  .card .desc { font-size: 11.5px; color: var(--sub); margin: 7px 0 4px; }
+  canvas { width: 100%; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 7px 14px; margin-top: 10px; font-size: 11px; color: var(--sub); }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend i { width: 11px; height: 11px; border-radius: 1px; display: inline-block; }
+
+  @media (max-width: 880px) {
+    .grid3 { grid-template-columns: 1fr; }
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 520px) {
+    h1 { font-size: 22px; }
+    .kpi .value { font-size: 18px; }
+  }
+
+  footer { max-width: 1180px; margin: 26px auto 0; text-align: center; font-size: 11px; color: var(--sub); letter-spacing: .08em; line-height: 1.9; }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  /* ④ レーダーチャート */
+  .radar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: center; }
+  @media (max-width: 880px) { .radar-grid { grid-template-columns: 1fr; } }
+  table.score { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+  table.score th, table.score td { padding: 8px 8px; border-bottom: 1px solid var(--rule); }
+  table.score thead th { color: var(--sub); font-weight: 600; font-size: 11px; letter-spacing: .08em; text-align: left; border-bottom: 1px solid var(--rule2); }
+  table.score td.num, table.score th.num { text-align: right; font-family: var(--serif); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+  table.score td:first-child { color: var(--ink); }
+  table.score tr.total td { font-weight: 600; border-top: 1px solid var(--rule2); color: var(--ink); }
+
+  /* AI分析サマリー */
+  .ai-btn {
+    font-family: var(--sans); font-size: 13.5px; letter-spacing: .08em; color: #ffffff;
+    background: #2563eb;
+    border: 1px solid #2563eb; border-radius: 4px; padding: 10px 24px; cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .ai-btn:hover:not(:disabled) { background: #1d4ed8; border-color: #1d4ed8; }
+  .ai-btn:disabled { opacity: .55; cursor: default; }
+  .ai-status { margin-top: 12px; font-size: 13px; color: var(--sub); min-height: 1px; }
+  .ai-status.err { color: var(--neg); }
+  .ai-result { margin-top: 14px; }
+  .ai-result h3 {
+    font-family: var(--serif); font-size: 14px; color: var(--accent); letter-spacing: .06em;
+    margin: 16px 0 5px; padding-bottom: 4px; border-bottom: 1px solid var(--rule);
+  }
+  .ai-result p { font-size: 13.5px; color: var(--ink); margin: 0 0 6px; line-height: 1.85; }
+  .ai-result .summary { background: rgba(143,180,214,0.07); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 2px; }
+  .ai-disclaimer { font-size: 11px; color: var(--sub); margin-top: 16px; border-top: 1px solid var(--rule); padding-top: 10px; line-height: 1.7; }
+
+  /* CSVアップロード */
+  .upload {
+    border: 1px dashed var(--rule2); border-radius: 6px; background: rgba(143,180,214,0.04);
+    padding: 10px 18px; margin-bottom: 22px; text-align: center;
+    transition: border-color .15s, background .15s;
+  }
+  .upload.drag { border-color: var(--accent); background: rgba(143,180,214,0.12); }
+  .upload-title { font-family: var(--serif); font-size: 15px; margin: 0 0 8px; color: var(--ink); letter-spacing: .06em; }
+  .upload-sub { font-size: 0.75rem; color: var(--sub); margin: 8px 0 0; line-height: 1.6; }
+  .upload-status { font-size: 12.5px; margin: 12px 0 0; min-height: 1px; color: var(--sub); }
+  .upload-status.ok { color: var(--pos); }
+  .upload-status.err { color: var(--neg); }
+
+  /* 財務分析総合評価 */
+  .grade-wrap { margin-top: 18px; border-top: 1px solid var(--rule2); padding-top: 18px; display: grid; grid-template-columns: 210px 1fr; gap: 24px; align-items: center; }
+  @media (max-width: 880px) { .grade-wrap { grid-template-columns: 1fr; gap: 18px; } }
+  .grade-box { text-align: center; }
+  .grade-letter { font-family: var(--serif); font-size: 66px; font-weight: 600; line-height: 1; letter-spacing: .04em; }
+  .grade-score { font-family: var(--serif); font-variant-numeric: tabular-nums; font-size: 21px; margin: 8px 0 0; color: var(--ink); }
+  .grade-score small { color: var(--sub); font-size: 13px; margin-left: 1px; }
+  .grade-comment { font-size: 12.5px; color: var(--sub); margin: 9px 0 0; line-height: 1.7; }
+  .axis-bars { display: flex; flex-direction: column; gap: 10px; }
+  .axis-row { display: grid; grid-template-columns: 50px 1fr 58px; align-items: center; gap: 10px; font-size: 12.5px; }
+  .axis-row .ax-name { color: var(--sub); }
+  .axis-row .ax-track { display: block; background: rgba(0,0,0,0.07); border-radius: 3px; height: 12px; overflow: hidden; }
+  .axis-row .ax-fill { display: block; height: 100%; border-radius: 3px; transition: width .3s; }
+  .axis-row .ax-val { text-align: right; font-family: var(--serif); font-variant-numeric: tabular-nums; color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ① ヘッダー -->
+  <header class="masthead">
+    <p class="overline">INTEGRATED FINANCIAL DASHBOARD</p>
+    <h1>AI財務分析ダッシュボード</h1>
+    <p class="subtitle">PL・BS・CF を統合分析</p>
+  </header>
+
+  <!-- CSVアップロード -->
+  <div class="upload" id="dropZone">
+    <p class="upload-title">CSVファイルをアップロード</p>
+    <label class="ai-btn" for="csvInput" style="display:inline-block;">CSVファイルを選択</label>
+    <input type="file" id="csvInput" accept=".csv,text/csv" hidden>
+    <p class="upload-sub">ここにドラッグ＆ドロップ、またはボタンで選択（列：科目・区分・金額〔・年度〕）。年度列があれば複数年度の推移も反映されます。</p>
+    <p class="upload-status" id="csvStatus"></p>
+  </div>
+
+  <!-- ② KPIカード -->
+  <div class="kpis" id="kpis"></div>
+
+  <!-- ③ 3列レイアウト -->
+  <div class="grid3">
+    <section class="card">
+      <h2><span class="no">PL</span> 損益構造</h2>
+      <p class="desc">売上高から各利益段階へ、費用が差し引かれる流れ（万円）。</p>
+      <canvas id="plChart"></canvas>
+      <div class="legend" id="plLegend"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="no">BS</span> 財務体質</h2>
+      <p class="desc">左＝資産、右＝負債・純資産。高さが金額に比例（貸借一致）。</p>
+      <canvas id="bsChart"></canvas>
+      <div class="legend" id="bsLegend"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="no">CF</span> 資金の流れ</h2>
+      <p class="desc">営業・投資・財務の各CFと、その合計＝現金増減（万円）。</p>
+      <canvas id="cfChart"></canvas>
+      <div class="legend" id="cfLegend"></div>
+    </section>
+  </div>
+
+  <!-- ④ レーダーチャート -->
+  <section class="card" style="margin-top:16px;">
+    <h2><span class="no">RADAR</span> 財務分析レーダーチャート</h2>
+    <p class="desc">収益性・安全性・成長性・効率性・耐性の5軸評価（各25点満点）。</p>
+    <div class="radar-grid">
+      <div>
+        <canvas id="radarChart"></canvas>
+        <div class="legend" style="justify-content:center; margin-top:12px;">
+          <span><i style="background:#6b97c4"></i>自社</span>
+          <span><i style="background:#cf8f4a"></i>製造業平均</span>
+        </div>
+      </div>
+      <div>
+        <table class="score">
+          <thead><tr><th>評価軸（指標）</th><th class="num">自社の数値</th><th class="num">自社</th><th class="num">製造業平均</th></tr></thead>
+          <tbody id="radarTable"></tbody>
+        </table>
+        <p class="desc" style="margin-top:10px;">スコアは各軸25点満点（自社は目安値換算：収益性10%・安全性50%・成長性20%・効率性1.5回・耐性200%＝各25点、上限25点）。製造業平均は業界目安の固定値。</p>
+      </div>
+    </div>
+
+    <!-- 財務分析総合評価 -->
+    <div class="grade-wrap" id="gradeWrap"></div>
+  </section>
+
+  <!-- ⑤ 複数年度比較 -->
+  <section class="card" style="margin-top:16px;">
+    <h2><span class="no">TREND</span> 複数年度比較グラフ</h2>
+    <p class="desc">5年推移。<span style="color:#6b97c4;">青＝売上高（左外軸・万円）</span>／<span style="color:#5aa873;">緑＝営業利益・当期純利益（左内軸・万円）</span>／<span style="color:#cf8f4a;">橙＝自己資本比率（右軸・％）</span>。利益は売上と桁が違うため専用スケールで表示。</p>
+    <canvas id="trendChart"></canvas>
+    <div class="legend" id="trendLegend"></div>
+  </section>
+
+  <!-- ⑥ AI分析サマリー -->
+  <section class="card" style="margin-top:16px;">
+    <h2><span class="no">AI</span> AI分析サマリー</h2>
+    <p class="desc">ダッシュボードの財務数値から、収益性・安全性・成長性・効率性・耐性の5観点コメントと総合所見を生成します。</p>
+    <button class="ai-btn" id="aiRunBtn">AI分析を実行</button>
+    <div class="ai-status" id="aiStatus"></div>
+    <div class="ai-result" id="aiResult"></div>
+  </section>
+
+</div>
+<footer>
+  AI財務分析ダッシュボード ／ 単一ファイル・外部ライブラリ不使用<br>
+  制作：大塚　春 ｜ 2026年6月 ｜ GitHub: <a href="https://github.com/harurun0226-art" target="_blank" rel="noopener">https://github.com/harurun0226-art</a>
+</footer>
+
+<script>
+"use strict";
+
+// ===== 固定データ（例題）=====
+const D = {
+  // PL
+  sales: 5000000, cogs: 3000000,
+  salary: 500000, ad: 200000, rent: 100000,
+  nonopRev: 50000, nonopExp: 30000, special: 0, tax: 220000,
+  // BS
+  currentAssets: 2000000, fixedAssets: 3000000,
+  currentLiab: 1200000, fixedLiab: 1800000, equity: 2000000,
+  // CF
+  cfOp: 800000, cfInv: -500000, cfFin: -200000,
+};
+
+// ===== 計算（CSV読込で再計算可能・ゼロ除算ガード付き）=====
+let sga, grossProfit, operating, ordinary, pretax, net;
+let totalAssets, totalLiab, totalLE, equityRatio, cashChange;
+let opMargin, cfMargin, assetTurnover, currentRatio;
+function recomputeModel() {
+  sga = D.salary + D.ad + D.rent;
+  grossProfit = D.sales - D.cogs;
+  operating = grossProfit - sga;
+  ordinary = operating + D.nonopRev - D.nonopExp;
+  pretax = ordinary + D.special;
+  net = pretax - D.tax;
+
+  totalAssets = D.currentAssets + D.fixedAssets;
+  totalLiab = D.currentLiab + D.fixedLiab;
+  totalLE = totalLiab + D.equity;
+  equityRatio = totalAssets ? D.equity / totalAssets : 0;
+
+  cashChange = D.cfOp + D.cfInv + D.cfFin;
+
+  opMargin      = D.sales ? operating / D.sales * 100 : 0;   // 売上高営業利益率(%)
+  cfMargin      = D.sales ? D.cfOp / D.sales * 100 : 0;      // 営業CFマージン(%)
+  assetTurnover = totalAssets ? D.sales / totalAssets : 0;   // 総資産回転率(回)
+  currentRatio  = D.currentLiab ? D.currentAssets / D.currentLiab * 100 : 0; // 流動比率(%)
+}
+recomputeModel();
+
+// ===== 共通ヘルパー =====
+const yen = v => (v < 0 ? "−" : "") + "¥" + Math.abs(v).toLocaleString("ja-JP");
+const man = v => v === 0 ? "0" : (v / 10000).toLocaleString("ja-JP") + "万";
+const pct = v => (v * 100).toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
+const serifFont = () => getComputedStyle(document.body).getPropertyValue("--serif");
+
+// ===== ② KPIカード =====
+function renderKpis() {
+  const cards = [
+    { label: "売上高",     value: yen(D.sales),     cls: "" },
+    { label: "営業利益",   value: yen(operating),   cls: operating >= 0 ? "pos" : "" },
+    { label: "当期純利益", value: yen(net),         cls: net >= 0 ? "pos" : "" },
+    { label: "営業CF",     value: yen(D.cfOp),      cls: D.cfOp >= 0 ? "pos" : "" },
+    { label: "自己資本比率", value: pct(equityRatio), cls: "blue" },
+  ];
+  document.getElementById("kpis").innerHTML = cards.map(c =>
+    `<div class="kpi ${c.cls}"><p class="label">${c.label}</p><p class="value">${c.value}</p></div>`).join("");
+}
+
+// ===== 棒グラフ共通描画（ゼロ基準・正は上/負は下）=====
+function drawBars(canvasId, legendId, items, cssH) {
+  const canvas = document.getElementById(canvasId);
+  const cssW = canvas.clientWidth || 320;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.height = Math.round(cssH * dpr);
+  canvas.width = Math.round(cssW * dpr);
+  canvas.style.height = cssH + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const m = { top: 30, right: 12, bottom: 54, left: 52 };
+  const plotW = cssW - m.left - m.right;
+  const plotH = cssH - m.top - m.bottom;
+  const serif = serifFont();
+
+  const values = items.map(s => s.value);
+  const yMax = Math.max(...values, 0);
+  const yMin = Math.min(...values, 0);
+  const range = (yMax - yMin) || 1;
+  const yOf = v => m.top + plotH * (1 - (v - yMin) / range);
+  const zeroY = yOf(0);
+
+  // 目盛り
+  const ticks = 4;
+  ctx.lineWidth = 1;
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= ticks; i++) {
+    const val = yMin + range * i / ticks;
+    const y = yOf(val);
+    ctx.strokeStyle = "rgba(0,0,0,0.07)";
+    ctx.beginPath(); ctx.moveTo(m.left, y); ctx.lineTo(m.left + plotW, y); ctx.stroke();
+    ctx.fillStyle = "#666666";
+    ctx.font = "10px " + serif;
+    ctx.textAlign = "right";
+    ctx.fillText(man(Math.round(val)), m.left - 6, y);
+  }
+  // ゼロ線
+  ctx.strokeStyle = "rgba(0,0,0,0.25)";
+  ctx.beginPath(); ctx.moveTo(m.left, zeroY); ctx.lineTo(m.left + plotW, zeroY); ctx.stroke();
+
+  // バー
+  const n = items.length;
+  const slot = plotW / n;
+  const barW = Math.min(slot * 0.58, 56);
+  items.forEach((s, i) => {
+    const cx = m.left + slot * (i + 0.5);
+    const x = cx - barW / 2;
+    const yTop = yOf(Math.max(s.value, 0));
+    const yBot = yOf(Math.min(s.value, 0));
+    const h = Math.max(yBot - yTop, 1);
+    ctx.fillStyle = s.color;
+    ctx.fillRect(x, yTop, barW, h);
+
+    // 金額ラベル：プラスはバー上端の上、マイナスはバー下端の下（どちらもバーの先端の外側）
+    ctx.fillStyle = "#333333";
+    ctx.font = "10.5px " + serif;
+    ctx.textAlign = "center";
+    if (s.value >= 0) {
+      ctx.textBaseline = "bottom";
+      ctx.fillText(man(s.value), cx, yTop - 4);
+    } else {
+      ctx.textBaseline = "top";
+      ctx.fillText(man(s.value), cx, yBot + 4);
+    }
+
+    // ラベル
+    ctx.fillStyle = "#666666";
+    ctx.font = "10.5px " + serif;
+    ctx.textBaseline = "top";
+    const label = s.short || s.name;
+    ctx.fillText(label, cx, m.top + plotH + 24);
+  });
+
+  if (legendId) {
+    document.getElementById(legendId).innerHTML = items.map(s =>
+      `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+  }
+}
+
+// ===== PL：階段グラフ =====
+const PL = [
+  { name: "売上高",     short: "売上",   value: D.sales,     color: "#6b97c4" },
+  { name: "売上総利益", short: "粗利",   value: grossProfit, color: "#3f8f5f" },
+  { name: "営業利益",   short: "営業",   value: operating,   color: "#5aa873" },
+  { name: "経常利益",   short: "経常",   value: ordinary,    color: "#7cc093" },
+  { name: "税引前利益", short: "税引前", value: pretax,      color: "#b6bf6e" },
+  { name: "当期純利益", short: "純利益", value: net,         color: net >= 0 ? "#5aa873" : "#cf7068" },
+];
+
+// ===== BS：構成図（2列・面積比例）=====
+// 資産＝同じ青、負債＝同じ赤（間は白2pxの区切り線で分ける）、純資産＝緑
+const COL = {
+  ca: "#4a7ab5", fa: "#4a7ab5", cl: "#c0392b", fl: "#c0392b", eq: "#5aa873",
+};
+const BS_LEFT = [
+  { name: "流動資産", value: D.currentAssets, color: COL.ca },
+  { name: "固定資産", value: D.fixedAssets,   color: COL.fa },
+];
+const BS_RIGHT = [
+  { name: "流動負債", value: D.currentLiab, color: COL.cl },
+  { name: "固定負債", value: D.fixedLiab,   color: COL.fl },
+  { name: "純資産",   value: D.equity,      color: COL.eq },
+];
+
+function drawBS(canvasId, legendId, cssH) {
+  const canvas = document.getElementById(canvasId);
+  const cssW = canvas.clientWidth || 320;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.height = Math.round(cssH * dpr);
+  canvas.width = Math.round(cssW * dpr);
+  canvas.style.height = cssH + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const m = { top: 34, right: 14, bottom: 26, left: 14 };
+  const plotW = cssW - m.left - m.right;
+  const plotH = cssH - m.top - m.bottom;
+  const serif = serifFont();
+
+  const colGap = Math.min(plotW * 0.10, 36);
+  const colW = (plotW - colGap) / 2;
+  const leftX = m.left;
+  const rightX = m.left + colW + colGap;
+
+  const basis = Math.max(totalAssets, totalLE);
+  const scale = plotH / basis;
+
+  // 列見出し
+  ctx.fillStyle = "#2563eb";
+  ctx.font = "12px " + serif;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("資産", leftX + colW / 2, m.top - 12);
+  ctx.fillText("負債・純資産", rightX + colW / 2, m.top - 12);
+
+  function column(x, blocks) {
+    let y = m.top;
+    const bounds = [];
+    blocks.forEach(b => {
+      const h = b.value * scale;
+      ctx.fillStyle = b.color;
+      ctx.fillRect(x, y, colW, h);
+
+      const cx = x + colW / 2, cy = y + h / 2;
+      const lum = parseInt(b.color.slice(1,3),16)*0.299 + parseInt(b.color.slice(3,5),16)*0.587 + parseInt(b.color.slice(5,7),16)*0.114;
+      ctx.fillStyle = lum > 150 ? "#1a1d22" : "#f3efe4";
+      ctx.textAlign = "center";
+      if (h >= 34) {
+        ctx.font = "11.5px " + serif; ctx.textBaseline = "bottom";
+        ctx.fillText(b.name, cx, cy - 1);
+        ctx.font = "10.5px " + serif; ctx.textBaseline = "top";
+        ctx.fillText(man(b.value), cx, cy + 2);
+      } else {
+        ctx.font = "10.5px " + serif; ctx.textBaseline = "middle";
+        ctx.fillText(b.name + " " + man(b.value), cx, cy);
+      }
+      y += h;
+      bounds.push(y);
+    });
+    // 区切り線（白の点線）：同色で隣り合うブロックの境界のみ（流動資産/固定資産・流動負債/固定負債）
+    ctx.strokeStyle = "rgba(255,255,255,0.6)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    for (let i = 0; i < blocks.length - 1; i++) {
+      if (blocks[i].color !== blocks[i + 1].color) continue;
+      ctx.beginPath();
+      ctx.moveTo(x, bounds[i]);
+      ctx.lineTo(x + colW, bounds[i]);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]); // 破線設定をリセット（他の描画に影響させない）
+  }
+  column(leftX, BS_LEFT);
+  column(rightX, BS_RIGHT);
+
+  if (legendId) {
+    document.getElementById(legendId).innerHTML =
+      `<span><i style="background:${COL.ca}"></i>資産</span>` +
+      `<span><i style="background:${COL.cl}"></i>負債</span>` +
+      `<span><i style="background:${COL.eq}"></i>純資産</span>`;
+  }
+}
+
+// ===== CF：フロー図 =====
+const CF = [
+  { name: "営業CF",   short: "営業",   value: D.cfOp,      color: "#5aa873" },
+  { name: "投資CF",   short: "投資",   value: D.cfInv,     color: "#cf7068" },
+  { name: "財務CF",   short: "財務",   value: D.cfFin,     color: "#cf7068" },
+  { name: "現金増減", short: "現金増減", value: cashChange, color: "#6b97c4" },
+];
+
+// ===== ④ レーダーチャート =====
+// 各軸：目安値で25点満点に換算（上限25点）
+// avg = 製造業平均スコア（業界目安の固定値）
+const RADAR = [
+  { name: "収益性", metric: "売上高営業利益率", raw: operating / D.sales * 100,            unit: "%", target: 10,  avg: 12 },
+  { name: "安全性", metric: "自己資本比率",     raw: equityRatio * 100,                    unit: "%", target: 50,  avg: 18 },
+  { name: "成長性", metric: "営業CFマージン",   raw: D.cfOp / D.sales * 100,               unit: "%", target: 20,  avg: 15 },
+  { name: "効率性", metric: "総資産回転率",     raw: D.sales / totalAssets,                unit: "回", target: 1.5, avg: 18 },
+  { name: "耐性",   metric: "流動比率",         raw: D.currentAssets / D.currentLiab * 100, unit: "%", target: 200, avg: 16 },
+];
+RADAR.forEach(a => a.score = Math.max(0, Math.min(a.raw / a.target * 25, 25)));
+let radarTotal = RADAR.reduce((s, a) => s + a.score, 0);     // 自社 合計
+let radarAvgTotal = RADAR.reduce((s, a) => s + a.avg, 0);    // 製造業平均 合計
+const fmtRaw = a => a.raw.toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + a.unit;
+
+// スコア表（自社／製造業平均）
+function renderRadarTable() {
+  document.getElementById("radarTable").innerHTML =
+    RADAR.map(a =>
+      `<tr><td>${a.name}<span style="color:var(--sub);font-size:11px;">（${a.metric}）</span></td>` +
+      `<td class="num">${fmtRaw(a)}</td>` +
+      `<td class="num">${a.score.toFixed(1)}</td>` +
+      `<td class="num" style="color:var(--sub);">${a.avg.toFixed(1)}</td></tr>`).join("") +
+    `<tr class="total"><td>総合スコア（／125）</td><td class="num">—</td>` +
+    `<td class="num">${radarTotal.toFixed(1)}</td>` +
+    `<td class="num">${radarAvgTotal.toFixed(1)}</td></tr>`;
+}
+
+// ===== 財務分析総合評価（S〜D・100点満点）=====
+function gradeOf(score100) {
+  if (score100 >= 80) return { g: "S", c: "財務状況は非常に良好です。",       col: "#5aa873" };
+  if (score100 >= 65) return { g: "A", c: "財務状況は良好です。",             col: "#5aa873" };
+  if (score100 >= 50) return { g: "B", c: "財務状況は概ね安定しています。",   col: "#2563eb" };
+  if (score100 >= 35) return { g: "C", c: "一部の指標に課題が見られます。",   col: "#cf8f4a" };
+  return                      { g: "D", c: "複数の指標で改善が必要な状態です。", col: "#cf7068" };
+}
+
+function renderGrade() {
+  const score100 = radarTotal / 125 * 100;   // 5軸合計(125点満点)を100点換算
+  const gr = gradeOf(score100);
+  // 各軸バー：スコアが高いほど緑、低いほど赤（赤→黄→緑をHSLで補間）
+  const bars = RADAR.map(a => {
+    const ratio = Math.max(0, Math.min(a.score / 25, 1));
+    // スコア(25点満点)に応じた4段階の色
+    const col = a.score >= 20 ? "#4caf50"   // 20〜25点：緑
+              : a.score >= 13 ? "#8bc34a"   // 13〜19点：黄緑
+              : a.score >= 8  ? "#ff9800"   // 8〜12点：オレンジ
+              :                 "#f44336";  // 0〜7点：赤
+    return `<div class="axis-row">` +
+      `<span class="ax-name">${a.name}</span>` +
+      `<span class="ax-track"><span class="ax-fill" style="width:${(ratio * 100).toFixed(0)}%;background:${col}"></span></span>` +
+      `<span class="ax-val">${a.score.toFixed(1)}/25</span></div>`;
+  }).join("");
+  document.getElementById("gradeWrap").innerHTML =
+    `<div class="grade-box">` +
+      `<div class="grade-letter" style="color:${gr.col}">${gr.g}</div>` +
+      `<p class="grade-score">${score100.toFixed(1)}<small>/100</small></p>` +
+      `<p class="grade-comment">${gr.c}</p>` +
+    `</div>` +
+    `<div class="axis-bars">${bars}</div>`;
+}
+
+function drawRadar(canvasId, items, cssH) {
+  const canvas = document.getElementById(canvasId);
+  const cssW = canvas.clientWidth || 360;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.height = Math.round(cssH * dpr);
+  canvas.width = Math.round(cssW * dpr);
+  canvas.style.height = cssH + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  const serif = serifFont();
+
+  const cx = cssW / 2, cy = cssH / 2 + 2;
+  const R = Math.min(cssH / 2 - 46, cssW / 2 - 80);
+  const N = items.length, maxScore = 25;
+  const ang = i => (-90 + 360 / N * i) * Math.PI / 180;
+  const pt = (i, frac) => [cx + R * frac * Math.cos(ang(i)), cy + R * frac * Math.sin(ang(i))];
+
+  // 同心ペンタゴンの目盛り
+  ctx.lineWidth = 1;
+  [0.2, 0.4, 0.6, 0.8, 1.0].forEach(f => {
+    ctx.strokeStyle = "rgba(0,0,0,0.07)";
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) { const [x, y] = pt(i, f); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.closePath(); ctx.stroke();
+  });
+  // 軸（スポーク）
+  ctx.strokeStyle = "rgba(0,0,0,0.12)";
+  for (let i = 0; i < N; i++) { const [x, y] = pt(i, 1); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke(); }
+
+  // データポリゴン（系列ごとに描画）
+  // 0点でも頂点が中心の一点に潰れないよう、描画半径に小さな下限(MIN_FRAC)を設ける
+  // → 頂点が必ず各軸上の別々の点になり、多角形が中心で自己交差（X字）しない（スコア表示は0のまま）
+  const MIN_FRAC = 0.04;
+  function drawSeries(scoreOf, fill, stroke, dot) {
+    const fracOf = s => Math.max(MIN_FRAC, Math.min(scoreOf(s) / maxScore, 1));
+    ctx.beginPath();
+    items.forEach((s, i) => { const [x, y] = pt(i, fracOf(s)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke();
+    items.forEach((s, i) => {
+      const [x, y] = pt(i, fracOf(s));
+      ctx.fillStyle = dot; ctx.beginPath(); ctx.arc(x, y, 2.6, 0, Math.PI * 2); ctx.fill();
+    });
+  }
+  // 製造業平均（オレンジ）を先に → 自社（ブルー）を上に重ねる
+  drawSeries(s => s.avg,   "rgba(207,143,74,0.30)",  "#cf8f4a", "#e9c79f");  // 業界平均：半透明オレンジ／ダークオレンジ
+  drawSeries(s => s.score, "rgba(107,151,196,0.34)", "#8fb4d6", "#cfe0f0");  // 自社：半透明ブルー／ネイビー
+
+  // 軸ラベル（項目名＋スコア）
+  items.forEach((s, i) => {
+    const [lx, ly] = pt(i, 1.15);
+    const cos = Math.cos(ang(i));
+    ctx.textAlign = Math.abs(cos) < 0.35 ? "center" : (cos > 0 ? "left" : "right");
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#333333"; ctx.font = "12px " + serif;
+    ctx.fillText(s.name, lx, ly - 7);
+    ctx.fillStyle = "#2563eb"; ctx.font = "11px " + serif;
+    ctx.fillText(s.score.toFixed(1) + "点", lx, ly + 7);
+  });
+}
+
+// ===== ⑤ 複数年度比較（折れ線・左軸=万円／右軸=％）=====
+// 売上は桁が大きいので専用軸、利益2本は専用軸、自己資本比率は右軸（％）
+const TREND = {
+  years: [2020, 2021, 2022, 2023, 2024],
+  series: [
+    { name: "売上高",       scale: "sales",  color: "#6b97c4", data: [380, 410, 450, 480, 500] }, // ネイビー（左外）
+    { name: "営業利益",     scale: "profit", color: "#5aa873", data: [15, 18, 20, 19, 20] },       // グリーン（左内）
+    { name: "当期純利益",   scale: "profit", color: "#7cc093", data: [8, 10, 12, 11, 12] },        // ライトグリーン（左内）
+    { name: "自己資本比率", scale: "ratio",  color: "#cf8f4a", data: [32, 35, 37, 39, 40] },       // オレンジ（右軸）
+  ],
+};
+let TREND_SALES_MAX = 500;  // 左外軸：売上（万円）※CSV読込で動的に再スケール
+let TREND_PROFIT_MAX = 25;  // 左内軸：利益（万円）
+let TREND_RATIO_MAX = 50;   // 右軸：自己資本比率（％）
+
+// 凡例
+document.getElementById("trendLegend").innerHTML = TREND.series.map(s => {
+  const tag = s.scale === "sales" ? "（左外軸）" : s.scale === "profit" ? "（左内軸）" : "（右軸）";
+  return `<span><i style="background:${s.color}"></i>${s.name}${tag}</span>`;
+}).join("");
+
+function drawTrend(canvasId, cssH) {
+  const canvas = document.getElementById(canvasId);
+  const cssW = canvas.clientWidth || 600;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.height = Math.round(cssH * dpr);
+  canvas.width = Math.round(cssW * dpr);
+  canvas.style.height = cssH + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  const serif = serifFont();
+
+  const m = { top: 30, right: 52, bottom: 38, left: 90 };
+  const plotW = cssW - m.left - m.right;
+  const plotH = cssH - m.top - m.bottom;
+  const x0 = m.left, yB = m.top + plotH;
+  const ySales  = v => yB - (v / TREND_SALES_MAX) * plotH;   // 左外軸：売上
+  const yProfit = v => yB - (v / TREND_PROFIT_MAX) * plotH;  // 左内軸：利益
+  const yRatio  = v => yB - (v / TREND_RATIO_MAX) * plotH;   // 右軸：割合
+  const yOf = s => s.scale === "sales" ? ySales : s.scale === "profit" ? yProfit : yRatio;
+  const N = TREND.years.length;
+  const xOf = i => x0 + (N === 1 ? 0 : plotW * (i / (N - 1)));
+
+  // 横グリッド＋3軸の目盛り（6本：各0〜max、グリッド共通／軸の色＝線の色）
+  const ticks = 5;
+  ctx.textBaseline = "middle"; ctx.lineWidth = 1; ctx.font = "10px " + serif;
+  for (let i = 0; i <= ticks; i++) {
+    const y = yB - plotH * (i / ticks);
+    ctx.strokeStyle = "rgba(0,0,0,0.07)";
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + plotW, y); ctx.stroke();
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#6b97c4"; ctx.fillText(String(TREND_SALES_MAX * i / ticks), 40, y);        // 売上（左外）
+    ctx.fillStyle = "#5aa873"; ctx.fillText(String(TREND_PROFIT_MAX * i / ticks), x0 - 8, y);   // 利益（左内）
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#cf8f4a"; ctx.fillText((TREND_RATIO_MAX * i / ticks) + "%", x0 + plotW + 7, y); // ％（右）
+  }
+  // 軸見出し（上部）
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "center";
+  ctx.fillStyle = "#6b97c4"; ctx.fillText("売上(万)", 24, m.top - 12);
+  ctx.fillStyle = "#5aa873"; ctx.fillText("利益(万)", 70, m.top - 12);
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#cf8f4a"; ctx.fillText("％", x0 + plotW + 7, m.top - 12);
+
+  // 年度（横軸）
+  ctx.fillStyle = "#666666"; ctx.font = "10.5px " + serif; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  TREND.years.forEach((yr, i) => ctx.fillText(yr + "年", xOf(i), yB + 9));
+
+  // 折れ線＋データ点
+  TREND.series.forEach(s => {
+    const yfn = yOf(s);
+    ctx.strokeStyle = s.color; ctx.lineWidth = 2;
+    ctx.beginPath();
+    s.data.forEach((v, i) => { const x = xOf(i), y = yfn(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+    s.data.forEach((v, i) => {
+      const x = xOf(i), y = yfn(v);
+      ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.stroke();
+    });
+  });
+}
+
+// ===== 描画 & リサイズ =====
+function drawAll() {
+  drawBars("plChart", "plLegend", PL, 300);
+  drawBS("bsChart", "bsLegend", 300);
+  drawBars("cfChart", "cfLegend", CF, 300);
+  drawRadar("radarChart", RADAR, 340);
+  drawTrend("trendChart", 320);
+}
+// 系列データの再構築（CSV読込で再計算した値を各グラフ配列へ反映）
+function rebuildSeries() {
+  PL[0].value = D.sales; PL[1].value = grossProfit; PL[2].value = operating;
+  PL[3].value = ordinary; PL[4].value = pretax; PL[5].value = net;
+  PL[5].color = net >= 0 ? "#5aa873" : "#cf7068";
+
+  BS_LEFT[0].value = D.currentAssets; BS_LEFT[1].value = D.fixedAssets;
+  BS_RIGHT[0].value = D.currentLiab; BS_RIGHT[1].value = D.fixedLiab; BS_RIGHT[2].value = D.equity;
+
+  CF[0].value = D.cfOp; CF[1].value = D.cfInv; CF[2].value = D.cfFin; CF[3].value = cashChange;
+
+  RADAR[0].raw = opMargin;
+  RADAR[1].raw = equityRatio * 100;
+  RADAR[2].raw = cfMargin;
+  RADAR[3].raw = assetTurnover;
+  RADAR[4].raw = currentRatio;
+  RADAR.forEach(a => a.score = Math.max(0, Math.min(a.raw / a.target * 25, 25)));
+  radarTotal = RADAR.reduce((s, a) => s + a.score, 0);
+  radarAvgTotal = RADAR.reduce((s, a) => s + a.avg, 0);
+}
+
+// 全更新（初期表示・CSV読込の両方で使用）
+function refresh() {
+  recomputeModel();
+  rebuildSeries();
+  renderKpis();
+  renderRadarTable();
+  renderGrade();
+  drawAll();
+  // 数値が変わったのでAI分析はリセット（再分析ボタンで再生成）
+  const aiRes = document.getElementById("aiResult");
+  const aiSt = document.getElementById("aiStatus");
+  const aiBtn = document.getElementById("aiRunBtn");
+  if (aiRes) aiRes.innerHTML = "";
+  if (aiSt) { aiSt.textContent = ""; aiSt.className = "ai-status"; }
+  if (aiBtn) aiBtn.textContent = "AI分析を実行";
+}
+
+refresh();
+let rT;
+window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(drawAll, 130); });
+
+// ===== ⑥ AI分析サマリー（ローカル生成）=====
+// 注：静的ページから api.anthropic.com を直接叩くのは CORS・認証・キー漏洩の問題で不可。
+// そのため財務数値からブラウザ内で分析文を生成する（5観点＋総合所見、断定回避のヘッジ表現）。
+// opMargin / cfMargin / assetTurnover / currentRatio は recomputeModel() で算出済み
+const r1 = (v) => v.toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+function buildAnalysis() {
+  // RADAR: 0=収益性,1=安全性,2=成長性,3=効率性,4=耐性（scoreは自社、avgは製造業平均）
+  const above = i => RADAR[i].score >= RADAR[i].avg;
+  const cmp = i => above(i) ? "上回って" : "やや下回って";
+
+  const sections = [
+    {
+      h: "① 収益性",
+      body: `売上高営業利益率は約${r1(opMargin)}%で、製造業平均の目安（5%程度）を${cmp(0)}います。本業で利益を生み出す力は相対的に高い可能性があります。当期純利益も${yen(net)}を確保しており、利益の質を継続して確認する余地があります。`
+    },
+    {
+      h: "② 安全性",
+      body: `自己資本比率は約${r1(equityRatio * 100)}%で、製造業平均の目安（36%程度）を${cmp(1)}います。返済に過度に依存しない財務基盤が築けている可能性があります。固定負債の返済期限の構成については、引き続き確認する余地があります。`
+    },
+    {
+      h: "③ 成長性",
+      body: `営業キャッシュフローマージンは約${r1(cfMargin)}%で、平均の目安（12%程度）を${cmp(2)}います。利益が着実に現金として回収できている可能性があります。5年推移でも売上は増加基調にあり、今後も同様の傾向が続くか確認する余地があります。`
+    },
+    {
+      h: "④ 効率性",
+      body: `総資産回転率は約${r1(assetTurnover)}回で、平均の目安（1.1回程度）を${cmp(3)}います。保有資産に対して売上が十分に大きいとは言い切れず、資産の活用効率には改善の余地がある可能性があります。固定資産の使われ方を確認する余地があります。`
+    },
+    {
+      h: "⑤ 耐性",
+      body: `流動比率は約${r1(currentRatio)}%で、平均の目安（160%程度）を${cmp(4)}います。短期的な支払い能力には一定の余裕がある可能性があります。ただし手元資金の適正水準は事業環境によって変わるため、確認する余地があります。`
+    },
+  ];
+
+  const strong = [0, 1, 2, 4].filter(above).length;
+  const summary = `全体として、収益性と成長性が製造業平均を上回る一方、効率性は平均をやや下回る傾向が見られます。安全性と耐性は安定圏にあり、現状の収益力を当面維持できる可能性があります。これらは例題データに基づく分析であり、実際の経営判断にあたっては追加の情報を確認する余地があります。`;
+
+  return sections.map(s => `<h3>${s.h}</h3><p>${s.body}</p>`).join("") +
+         `<h3>総合所見</h3><p class="summary">${summary}</p>` +
+         `<p class="ai-disclaimer">※ 本サマリーは、上記ダッシュボードの財務数値からブラウザ内で自動生成した分析コメントです（外部APIへの送信なし）。製造業平均はレーダーチャートの業界目安スコアに基づきます。</p>`;
+}
+
+(function setupAI() {
+  const btn = document.getElementById("aiRunBtn");
+  const status = document.getElementById("aiStatus");
+  const result = document.getElementById("aiResult");
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    status.className = "ai-status";
+    status.textContent = "分析中...";
+    result.innerHTML = "";
+    setTimeout(() => {
+      try {
+        result.innerHTML = buildAnalysis();
+        status.textContent = "";
+        btn.textContent = "再分析";
+      } catch (e) {
+        status.className = "ai-status err";
+        status.textContent = "分析に失敗しました。再度お試しください。";
+      } finally {
+        btn.disabled = false;
+      }
+    }, 900);
+  });
+})();
+
+// ===== CSVアップロード（科目・区分・金額）=====
+// 区分→Dのキーへの対応（販管費は合算してsalaryへ集約）
+const CSV_MAP = {
+  "売上": "sales", "売上原価": "cogs", "販管費": "salary",
+  "営業外収益": "nonopRev", "営業外費用": "nonopExp", "法人税等": "tax",
+  "流動資産": "currentAssets", "固定資産": "fixedAssets",
+  "流動負債": "currentLiab", "固定負債": "fixedLiab", "純資産": "equity",
+  "営業CF": "cfOp", "投資CF": "cfInv", "財務CF": "cfFin",
+};
+
+function emptyBucket() {
+  return {
+    sales: 0, cogs: 0, salary: 0, ad: 0, rent: 0, nonopRev: 0, nonopExp: 0, special: 0, tax: 0,
+    currentAssets: 0, fixedAssets: 0, currentLiab: 0, fixedLiab: 0, equity: 0,
+    cfOp: 0, cfInv: 0, cfFin: 0,
+  };
+}
+
+// バケット(=単年分のデータ)から主要指標を算出（recomputeModelのD非依存版）
+function deriveModel(d) {
+  const sga = d.salary + d.ad + d.rent;
+  const operating = (d.sales - d.cogs) - sga;
+  const ordinary = operating + d.nonopRev - d.nonopExp;
+  const net = ordinary + d.special - d.tax;
+  const totalAssets = d.currentAssets + d.fixedAssets;
+  const equityRatio = totalAssets ? d.equity / totalAssets * 100 : 0;
+  return { sales: d.sales, operating, net, equityRatio };
+}
+
+// 軸の最大値を「キリのよい値」に切り上げ（1/2/5×10^n）
+function niceCeil(v) {
+  if (!(v > 0)) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / pow;
+  const nice = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+  return nice * pow;
+}
+
+// 複数年度比較グラフを全年度データで再構築（軸も動的にスケール）
+function applyTrend(yearsNum, buckets) {
+  const salesMan = [], opMan = [], netMan = [], eqRatio = [];
+  yearsNum.forEach(y => {
+    const m2 = deriveModel(buckets[String(y)]);
+    salesMan.push(m2.sales / 10000);
+    opMan.push(m2.operating / 10000);
+    netMan.push(m2.net / 10000);
+    eqRatio.push(m2.equityRatio);
+  });
+  TREND.years = yearsNum;
+  TREND.series[0].data = salesMan;   // 売上高（万円）
+  TREND.series[1].data = opMan;      // 営業利益（万円）
+  TREND.series[2].data = netMan;     // 当期純利益（万円）
+  TREND.series[3].data = eqRatio;    // 自己資本比率（％）
+  TREND_SALES_MAX  = niceCeil(Math.max(...salesMan, 1));
+  TREND_PROFIT_MAX = niceCeil(Math.max(...opMan, ...netMan, 1));
+  TREND_RATIO_MAX  = niceCeil(Math.max(...eqRatio, 1));
+}
+
+// CSVを解析して反映。年度列があれば複数年度対応（最新年度を主要グラフ、全年度をトレンドへ）
+// 戻り値：{ years: [...] }（複数年度のとき）／{ years: [] }（単年・後方互換）
+function parseCSVAndApply(text) {
+  let raw = String(text);
+  if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1); // BOM除去
+  const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length);
+  if (!lines.length) throw new Error("empty");
+
+  // ヘッダー検証：科目・区分・金額が必須（年度は任意）
+  const header = lines[0].split(",").map(s => s.trim());
+  const iCat = header.indexOf("区分");
+  const iAmt = header.indexOf("金額");
+  const iYear = header.indexOf("年度"); // 無ければ -1
+  if (header.indexOf("科目") < 0 || iCat < 0 || iAmt < 0) throw new Error("bad header");
+
+  // 年度ごとにバケットへ集計（年度なしの行は "__single__" にまとめる＝後方互換）
+  const buckets = {};
+  let matched = 0;
+  for (let r = 1; r < lines.length; r++) {
+    const cols = lines[r].split(",");
+    const cat = (cols[iCat] || "").trim();
+    const amt = parseFloat((cols[iAmt] || "").replace(/[^0-9.\-]/g, ""));
+    if (!cat || isNaN(amt)) continue;
+    const key = CSV_MAP[cat];
+    if (!key) continue;
+    let yr = "__single__";
+    if (iYear >= 0) {
+      const y = (cols[iYear] || "").trim();
+      if (y) yr = y;
+    }
+    if (!buckets[yr]) buckets[yr] = emptyBucket();
+    buckets[yr][key] += amt;
+    matched++;
+  }
+  if (!matched) throw new Error("no matching rows");
+
+  const yearsNum = Object.keys(buckets)
+    .filter(k => k !== "__single__")
+    .map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+
+  if (yearsNum.length === 0) {
+    // 後方互換：年度なし＝単年データ。トレンドは現状維持
+    Object.assign(D, buckets["__single__"]);
+    refresh();
+    return { years: [] };
+  }
+
+  // 複数年度：最新年度を主要グラフ(PL/BS/CF/KPI/レーダー/総合評価)へ、全年度をトレンドへ
+  const latest = yearsNum[yearsNum.length - 1];
+  Object.assign(D, buckets[String(latest)]);
+  applyTrend(yearsNum, buckets);
+  refresh();  // refresh内のdrawAllで複数年度比較グラフも再描画される
+  return { years: yearsNum, latest };
+}
+
+(function setupCSV() {
+  const input = document.getElementById("csvInput");
+  const zone = document.getElementById("dropZone");
+  const status = document.getElementById("csvStatus");
+
+  function setStatus(msg, cls) { status.textContent = msg; status.className = "upload-status" + (cls ? " " + cls : ""); }
+
+  function handleFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const info = parseCSVAndApply(e.target.result);
+        let msg = "データを読み込みました：" + file.name;
+        if (info && info.years && info.years.length > 1) {
+          msg += `（${info.years.length}年度・最新${info.latest}年を表示）`;
+        }
+        setStatus(msg, "ok");
+      } catch (err) {
+        setStatus("フォーマットエラー：科目・区分・金額の列が必要です", "err");
+      }
+    };
+    reader.onerror = () => setStatus("フォーマットエラー：科目・区分・金額の列が必要です", "err");
+    reader.readAsText(file, "UTF-8");
+  }
+
+  input.addEventListener("change", () => { handleFile(input.files[0]); input.value = ""; });
+  ["dragenter", "dragover"].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add("drag"); }));
+  ["dragleave", "dragend"].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove("drag"); }));
+  zone.addEventListener("drop", e => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer && e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+})();
+</script>
+</body>
+</html>
