@@ -357,12 +357,14 @@ function drawBars(canvasId, legendId, items, cssH) {
     ctx.fillStyle = s.color;
     ctx.fillRect(x, yTop, barW, h);
 
-    // 金額
+    // 金額ラベル
+    // プラス：バーの上端の上に表示／マイナス：ゼロ線の上(zeroY-15px)に表示
+    // → マイナスのバーでも金額が横軸ラベルと重ならない
     ctx.fillStyle = "#ece7da";
     ctx.font = "10.5px " + serif;
     ctx.textAlign = "center";
-    ctx.textBaseline = s.value >= 0 ? "bottom" : "top";
-    ctx.fillText(man(s.value), cx, s.value >= 0 ? yTop - 4 : yBot + 4);
+    ctx.textBaseline = "bottom";
+    ctx.fillText(man(s.value), cx, s.value >= 0 ? yTop - 4 : zeroY - 15);
 
     // ラベル
     ctx.fillStyle = "#97a0ab";
