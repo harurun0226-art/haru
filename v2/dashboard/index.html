@@ -160,7 +160,7 @@
   <!-- CSVアップロード -->
   <div class="upload" id="dropZone">
     <p class="upload-title">CSVファイルをアップロード</p>
-    <p class="upload-sub">ここにドラッグ＆ドロップ、またはボタンで選択（列：科目・区分・金額）。読み込むとダッシュボードが自動更新されます。</p>
+    <p class="upload-sub">ここにドラッグ＆ドロップ、またはボタンで選択（列：科目・区分・金額〔・年度〕）。年度列があれば複数年度の推移も反映されます。</p>
     <label class="ai-btn" for="csvInput" style="display:inline-block;">CSVファイルを選択</label>
     <input type="file" id="csvInput" accept=".csv,text/csv" hidden>
     <p class="upload-status" id="csvStatus"></p>
@@ -632,9 +632,9 @@ const TREND = {
     { name: "自己資本比率", scale: "ratio",  color: "#cf8f4a", data: [32, 35, 37, 39, 40] },       // オレンジ（右軸）
   ],
 };
-const TREND_SALES_MAX = 500;  // 左外軸：売上（万円）
-const TREND_PROFIT_MAX = 25;  // 左内軸：利益（万円）
-const TREND_RATIO_MAX = 50;   // 右軸：自己資本比率（％）
+let TREND_SALES_MAX = 500;  // 左外軸：売上（万円）※CSV読込で動的に再スケール
+let TREND_PROFIT_MAX = 25;  // 左内軸：利益（万円）
+let TREND_RATIO_MAX = 50;   // 右軸：自己資本比率（％）
 
 // 凡例
 document.getElementById("trendLegend").innerHTML = TREND.series.map(s => {
@@ -830,24 +830,71 @@ const CSV_MAP = {
   "営業CF": "cfOp", "投資CF": "cfInv", "財務CF": "cfFin",
 };
 
+function emptyBucket() {
+  return {
+    sales: 0, cogs: 0, salary: 0, ad: 0, rent: 0, nonopRev: 0, nonopExp: 0, special: 0, tax: 0,
+    currentAssets: 0, fixedAssets: 0, currentLiab: 0, fixedLiab: 0, equity: 0,
+    cfOp: 0, cfInv: 0, cfFin: 0,
+  };
+}
+
+// バケット(=単年分のデータ)から主要指標を算出（recomputeModelのD非依存版）
+function deriveModel(d) {
+  const sga = d.salary + d.ad + d.rent;
+  const operating = (d.sales - d.cogs) - sga;
+  const ordinary = operating + d.nonopRev - d.nonopExp;
+  const net = ordinary + d.special - d.tax;
+  const totalAssets = d.currentAssets + d.fixedAssets;
+  const equityRatio = totalAssets ? d.equity / totalAssets * 100 : 0;
+  return { sales: d.sales, operating, net, equityRatio };
+}
+
+// 軸の最大値を「キリのよい値」に切り上げ（1/2/5×10^n）
+function niceCeil(v) {
+  if (!(v > 0)) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / pow;
+  const nice = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+  return nice * pow;
+}
+
+// 複数年度比較グラフを全年度データで再構築（軸も動的にスケール）
+function applyTrend(yearsNum, buckets) {
+  const salesMan = [], opMan = [], netMan = [], eqRatio = [];
+  yearsNum.forEach(y => {
+    const m2 = deriveModel(buckets[String(y)]);
+    salesMan.push(m2.sales / 10000);
+    opMan.push(m2.operating / 10000);
+    netMan.push(m2.net / 10000);
+    eqRatio.push(m2.equityRatio);
+  });
+  TREND.years = yearsNum;
+  TREND.series[0].data = salesMan;   // 売上高（万円）
+  TREND.series[1].data = opMan;      // 営業利益（万円）
+  TREND.series[2].data = netMan;     // 当期純利益（万円）
+  TREND.series[3].data = eqRatio;    // 自己資本比率（％）
+  TREND_SALES_MAX  = niceCeil(Math.max(...salesMan, 1));
+  TREND_PROFIT_MAX = niceCeil(Math.max(...opMan, ...netMan, 1));
+  TREND_RATIO_MAX  = niceCeil(Math.max(...eqRatio, 1));
+}
+
+// CSVを解析して反映。年度列があれば複数年度対応（最新年度を主要グラフ、全年度をトレンドへ）
+// 戻り値：{ years: [...] }（複数年度のとき）／{ years: [] }（単年・後方互換）
 function parseCSVAndApply(text) {
   let raw = String(text);
   if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1); // BOM除去
   const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length);
   if (!lines.length) throw new Error("empty");
 
-  // ヘッダー検証：科目・区分・金額の3列が必須
+  // ヘッダー検証：科目・区分・金額が必須（年度は任意）
   const header = lines[0].split(",").map(s => s.trim());
   const iCat = header.indexOf("区分");
   const iAmt = header.indexOf("金額");
+  const iYear = header.indexOf("年度"); // 無ければ -1
   if (header.indexOf("科目") < 0 || iCat < 0 || iAmt < 0) throw new Error("bad header");
 
-  // 特別損益はCSV形式に無いため0で初期化（年度データも無いのでトレンドは現状維持）
-  const next = {
-    sales: 0, cogs: 0, salary: 0, ad: 0, rent: 0, nonopRev: 0, nonopExp: 0, special: 0, tax: 0,
-    currentAssets: 0, fixedAssets: 0, currentLiab: 0, fixedLiab: 0, equity: 0,
-    cfOp: 0, cfInv: 0, cfFin: 0,
-  };
+  // 年度ごとにバケットへ集計（年度なしの行は "__single__" にまとめる＝後方互換）
+  const buckets = {};
   let matched = 0;
   for (let r = 1; r < lines.length; r++) {
     const cols = lines[r].split(",");
@@ -855,12 +902,35 @@ function parseCSVAndApply(text) {
     const amt = parseFloat((cols[iAmt] || "").replace(/[^0-9.\-]/g, ""));
     if (!cat || isNaN(amt)) continue;
     const key = CSV_MAP[cat];
-    if (key) { next[key] += amt; matched++; }
+    if (!key) continue;
+    let yr = "__single__";
+    if (iYear >= 0) {
+      const y = (cols[iYear] || "").trim();
+      if (y) yr = y;
+    }
+    if (!buckets[yr]) buckets[yr] = emptyBucket();
+    buckets[yr][key] += amt;
+    matched++;
   }
   if (!matched) throw new Error("no matching rows");
 
-  Object.assign(D, next);  // Dはconstオブジェクトだがプロパティは更新可
-  refresh();               // 全グラフ・KPI・レーダーを再描画、AIはリセット
+  const yearsNum = Object.keys(buckets)
+    .filter(k => k !== "__single__")
+    .map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+
+  if (yearsNum.length === 0) {
+    // 後方互換：年度なし＝単年データ。トレンドは現状維持
+    Object.assign(D, buckets["__single__"]);
+    refresh();
+    return { years: [] };
+  }
+
+  // 複数年度：最新年度を主要グラフ(PL/BS/CF/KPI/レーダー/総合評価)へ、全年度をトレンドへ
+  const latest = yearsNum[yearsNum.length - 1];
+  Object.assign(D, buckets[String(latest)]);
+  applyTrend(yearsNum, buckets);
+  refresh();  // refresh内のdrawAllで複数年度比較グラフも再描画される
+  return { years: yearsNum, latest };
 }
 
 (function setupCSV() {
@@ -875,8 +945,12 @@ function parseCSVAndApply(text) {
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        parseCSVAndApply(e.target.result);
-        setStatus("データを読み込みました：" + file.name, "ok");
+        const info = parseCSVAndApply(e.target.result);
+        let msg = "データを読み込みました：" + file.name;
+        if (info && info.years && info.years.length > 1) {
+          msg += `（${info.years.length}年度・最新${info.latest}年を表示）`;
+        }
+        setStatus(msg, "ok");
       } catch (err) {
         setStatus("フォーマットエラー：科目・区分・金額の列が必要です", "err");
       }
