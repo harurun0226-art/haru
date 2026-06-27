@@ -130,6 +130,21 @@
   .upload-status { font-size: 12.5px; margin: 12px 0 0; min-height: 1px; color: var(--sub); }
   .upload-status.ok { color: var(--pos); }
   .upload-status.err { color: var(--neg); }
+
+  /* 財務分析総合評価 */
+  .grade-wrap { margin-top: 18px; border-top: 1px solid var(--rule2); padding-top: 18px; display: grid; grid-template-columns: 210px 1fr; gap: 24px; align-items: center; }
+  @media (max-width: 880px) { .grade-wrap { grid-template-columns: 1fr; gap: 18px; } }
+  .grade-box { text-align: center; }
+  .grade-letter { font-family: var(--serif); font-size: 66px; font-weight: 600; line-height: 1; letter-spacing: .04em; }
+  .grade-score { font-family: var(--serif); font-variant-numeric: tabular-nums; font-size: 21px; margin: 8px 0 0; color: var(--ink); }
+  .grade-score small { color: var(--sub); font-size: 13px; margin-left: 1px; }
+  .grade-comment { font-size: 12.5px; color: var(--sub); margin: 9px 0 0; line-height: 1.7; }
+  .axis-bars { display: flex; flex-direction: column; gap: 10px; }
+  .axis-row { display: grid; grid-template-columns: 50px 1fr 58px; align-items: center; gap: 10px; font-size: 12.5px; }
+  .axis-row .ax-name { color: var(--sub); }
+  .axis-row .ax-track { background: rgba(255,255,255,0.06); border-radius: 3px; height: 12px; overflow: hidden; }
+  .axis-row .ax-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+  .axis-row .ax-val { text-align: right; font-family: var(--serif); font-variant-numeric: tabular-nums; color: var(--ink); }
 </style>
 </head>
 <body>
@@ -198,6 +213,9 @@
         <p class="desc" style="margin-top:10px;">スコアは各軸25点満点（自社は目安値換算：収益性10%・安全性50%・成長性20%・効率性1.5回・耐性200%＝各25点、上限25点）。製造業平均は業界目安の固定値。</p>
       </div>
     </div>
+
+    <!-- 財務分析総合評価 -->
+    <div class="grade-wrap" id="gradeWrap"></div>
   </section>
 
   <!-- ⑤ 複数年度比較 -->
@@ -487,6 +505,36 @@ function renderRadarTable() {
     `<td class="num">${radarAvgTotal.toFixed(1)}</td></tr>`;
 }
 
+// ===== 財務分析総合評価（S〜D・100点満点）=====
+function gradeOf(score100) {
+  if (score100 >= 80) return { g: "S", c: "財務状況は非常に良好です。",       col: "#5aa873" };
+  if (score100 >= 65) return { g: "A", c: "財務状況は良好です。",             col: "#5aa873" };
+  if (score100 >= 50) return { g: "B", c: "財務状況は概ね安定しています。",   col: "#8fb4d6" };
+  if (score100 >= 35) return { g: "C", c: "一部の指標に課題が見られます。",   col: "#cf8f4a" };
+  return                      { g: "D", c: "複数の指標で改善が必要な状態です。", col: "#cf7068" };
+}
+
+function renderGrade() {
+  const score100 = radarTotal / 125 * 100;   // 5軸合計(125点満点)を100点換算
+  const gr = gradeOf(score100);
+  // 各軸バー：スコアが高いほど緑、低いほど赤（赤→黄→緑をHSLで補間）
+  const bars = RADAR.map(a => {
+    const ratio = Math.max(0, Math.min(a.score / 25, 1));
+    const col = `hsl(${Math.round(ratio * 120)}, 55%, 48%)`;
+    return `<div class="axis-row">` +
+      `<span class="ax-name">${a.name}</span>` +
+      `<span class="ax-track"><span class="ax-fill" style="width:${(ratio * 100).toFixed(0)}%;background:${col}"></span></span>` +
+      `<span class="ax-val">${a.score.toFixed(1)}/25</span></div>`;
+  }).join("");
+  document.getElementById("gradeWrap").innerHTML =
+    `<div class="grade-box">` +
+      `<div class="grade-letter" style="color:${gr.col}">${gr.g}</div>` +
+      `<p class="grade-score">${score100.toFixed(1)}<small>/100</small></p>` +
+      `<p class="grade-comment">${gr.c}</p>` +
+    `</div>` +
+    `<div class="axis-bars">${bars}</div>`;
+}
+
 function drawRadar(canvasId, items, cssH) {
   const canvas = document.getElementById(canvasId);
   const cssW = canvas.clientWidth || 360;
@@ -668,6 +716,7 @@ function refresh() {
   rebuildSeries();
   renderKpis();
   renderRadarTable();
+  renderGrade();
   drawAll();
   // 数値が変わったのでAI分析はリセット（再分析ボタンで再生成）
   const aiRes = document.getElementById("aiResult");
