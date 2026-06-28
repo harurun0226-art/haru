@@ -203,7 +203,7 @@
         <canvas id="radarChart"></canvas>
         <div class="legend" style="justify-content:center; margin-top:12px;">
           <span><i style="background:#6b97c4"></i>自社</span>
-          <span><i style="background:#cf8f4a"></i>製造業平均</span>
+          <span><i style="background:#8a909a"></i>製造業平均</span>
         </div>
       </div>
       <div>
@@ -606,7 +606,7 @@ function drawRadar(canvasId, items, cssH) {
     });
   }
   // 製造業平均（オレンジ）を先に → 自社（ブルー）を上に重ねる
-  drawSeries(s => s.avg,   "rgba(207,143,74,0.30)",  "#cf8f4a", "#e9c79f");  // 業界平均：半透明オレンジ／ダークオレンジ
+  drawSeries(s => s.avg,   "rgba(140,146,156,0.28)", "#8a909a", "#b8bdc4");  // 業界平均：半透明グレー／グレー
   drawSeries(s => s.score, "rgba(107,151,196,0.34)", "#8fb4d6", "#cfe0f0");  // 自社：半透明ブルー／ネイビー
 
   // 軸ラベル（項目名＋スコア）
