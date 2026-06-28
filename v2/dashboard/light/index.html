@@ -94,12 +94,13 @@
   /* ④ レーダーチャート */
   .radar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: center; }
   @media (max-width: 880px) { .radar-grid { grid-template-columns: 1fr; } }
-  table.score { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
-  table.score th, table.score td { padding: 8px 8px; border-bottom: 1px solid var(--rule); }
-  table.score thead th { color: var(--sub); font-weight: 600; font-size: 11px; letter-spacing: .08em; text-align: left; border-bottom: 1px solid var(--rule2); }
+  table.score { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 6px; }
+  table.score th, table.score td { padding: 11px 12px; border-bottom: 1px solid var(--rule); }
+  table.score thead th { color: #1a2340; font-weight: 700; font-size: 11.5px; letter-spacing: .08em; text-align: left; border-bottom: 2px solid #cbd5e1; background: #eef2f8; }
   table.score td.num, table.score th.num { text-align: right; font-family: var(--serif); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
-  table.score td:first-child { color: var(--ink); }
-  table.score tr.total td { font-weight: 600; border-top: 1px solid var(--rule2); color: var(--ink); }
+  table.score td:first-child { color: #1a2340; }
+  table.score tbody tr:not(.total):nth-child(odd) td { background: #f8fafc; }
+  table.score tr.total td { font-weight: 700; font-size: 14px; border-top: 2px solid #cbd5e1; color: #1a2340; background: #eaf0fb; }
 
   /* AI分析サマリー */
   .ai-btn {
@@ -224,7 +225,7 @@
   <!-- ⑤ 複数年度比較 -->
   <section class="card" style="margin-top:16px;">
     <h2><span class="no">TREND</span> 複数年度比較グラフ</h2>
-    <p class="desc">5年推移。<span style="color:#6b97c4;">青＝売上高（左外軸・万円）</span>／<span style="color:#5aa873;">緑＝営業利益・当期純利益（左内軸・万円）</span>／<span style="color:#cf8f4a;">橙＝自己資本比率（右軸・％）</span>。利益は売上と桁が違うため専用スケールで表示。</p>
+    <p class="desc">年ごとに4項目を横並びにしたグループ棒グラフ。単位が異なるため各項目をその最大値で正規化して高さを揃え、実数値はバー上に表示します（売上高・営業利益・当期純利益＝万円／自己資本比率＝％）。</p>
     <canvas id="trendChart"></canvas>
     <div class="legend" id="trendLegend"></div>
   </section>
@@ -522,9 +523,9 @@ function renderRadarTable() {
       `<td class="num">${fmtRaw(a)}</td>` +
       `<td class="num">${a.score.toFixed(1)}</td>` +
       `<td class="num" style="color:var(--sub);">${a.avg.toFixed(1)}</td></tr>`).join("") +
-    `<tr class="total"><td>総合スコア（／125）</td><td class="num">—</td>` +
-    `<td class="num">${radarTotal.toFixed(1)}</td>` +
-    `<td class="num">${radarAvgTotal.toFixed(1)}</td></tr>`;
+    `<tr class="total"><td>総合スコア（／100）</td><td class="num">—</td>` +
+    `<td class="num">${(radarTotal / 125 * 100).toFixed(1)}</td>` +
+    `<td class="num">${(radarAvgTotal / 125 * 100).toFixed(1)}</td></tr>`;
 }
 
 // ===== 財務分析総合評価（S〜D・100点満点）=====
@@ -617,9 +618,9 @@ function drawRadar(canvasId, items, cssH) {
     const cos = Math.cos(ang(i));
     ctx.textAlign = Math.abs(cos) < 0.35 ? "center" : (cos > 0 ? "left" : "right");
     ctx.textBaseline = "middle";
-    ctx.fillStyle = "#333333"; ctx.font = "12px " + serif;
+    ctx.fillStyle = "#9aa1ab"; ctx.font = "12px " + serif;   // 軸ラベル：目立たないグレー
     ctx.fillText(s.name, lx, ly - 7);
-    ctx.fillStyle = "#2563eb"; ctx.font = "11px " + serif;
+    ctx.fillStyle = "#8b929c"; ctx.font = "11px " + serif;   // スコア：やや濃いグレー
     ctx.fillText(s.score.toFixed(1) + "点", lx, ly + 7);
   });
 }
@@ -641,10 +642,12 @@ let TREND_RATIO_MAX = 50;   // 右軸：自己資本比率（％）
 
 // 凡例
 document.getElementById("trendLegend").innerHTML = TREND.series.map(s => {
-  const tag = s.scale === "sales" ? "（左外軸）" : s.scale === "profit" ? "（左内軸）" : "（右軸）";
+  const tag = s.scale === "ratio" ? "（％）" : "（万円）";
   return `<span><i style="background:${s.color}"></i>${s.name}${tag}</span>`;
 }).join("");
 
+// 複数年度比較：グループ棒グラフ（年ごとに4項目を横並び）
+// 単位が異なる4項目（売上・利益＝万円／自己資本比率＝％）を比較できるよう、各項目を「その項目の最大値」で正規化して高さを揃え、実数値はバー上にラベル表示する。
 function drawTrend(canvasId, cssH) {
   const canvas = document.getElementById(canvasId);
   const cssW = canvas.clientWidth || 600;
@@ -657,53 +660,57 @@ function drawTrend(canvasId, cssH) {
   ctx.clearRect(0, 0, cssW, cssH);
   const serif = serifFont();
 
-  const m = { top: 30, right: 52, bottom: 38, left: 90 };
+  const m = { top: 26, right: 16, bottom: 40, left: 16 };
   const plotW = cssW - m.left - m.right;
   const plotH = cssH - m.top - m.bottom;
   const x0 = m.left, yB = m.top + plotH;
-  const ySales  = v => yB - (v / TREND_SALES_MAX) * plotH;   // 左外軸：売上
-  const yProfit = v => yB - (v / TREND_PROFIT_MAX) * plotH;  // 左内軸：利益
-  const yRatio  = v => yB - (v / TREND_RATIO_MAX) * plotH;   // 右軸：割合
-  const yOf = s => s.scale === "sales" ? ySales : s.scale === "profit" ? yProfit : yRatio;
-  const N = TREND.years.length;
-  const xOf = i => x0 + (N === 1 ? 0 : plotW * (i / (N - 1)));
+  const years = TREND.years, series = TREND.series;
+  const G = years.length, S = series.length;
 
-  // 横グリッド＋3軸の目盛り（6本：各0〜max、グリッド共通／軸の色＝線の色）
-  const ticks = 5;
-  ctx.textBaseline = "middle"; ctx.lineWidth = 1; ctx.font = "10px " + serif;
-  for (let i = 0; i <= ticks; i++) {
-    const y = yB - plotH * (i / ticks);
-    ctx.strokeStyle = "rgba(0,0,0,0.07)";
+  // 各項目の最大絶対値（正規化の基準。0除算回避で最低1）
+  const seriesMax = series.map(s => Math.max(...s.data.map(v => Math.abs(v)), 1));
+
+  // 薄い横グリッド（正規化のため目盛り値は表示しない）
+  ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,0.06)";
+  for (let i = 1; i <= 4; i++) {
+    const y = yB - plotH * (i / 4);
     ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + plotW, y); ctx.stroke();
-    ctx.textAlign = "right";
-    ctx.fillStyle = "#6b97c4"; ctx.fillText(String(TREND_SALES_MAX * i / ticks), 40, y);        // 売上（左外）
-    ctx.fillStyle = "#5aa873"; ctx.fillText(String(TREND_PROFIT_MAX * i / ticks), x0 - 8, y);   // 利益（左内）
-    ctx.textAlign = "left";
-    ctx.fillStyle = "#cf8f4a"; ctx.fillText((TREND_RATIO_MAX * i / ticks) + "%", x0 + plotW + 7, y); // ％（右）
   }
-  // 軸見出し（上部）
-  ctx.textBaseline = "alphabetic"; ctx.textAlign = "center";
-  ctx.fillStyle = "#6b97c4"; ctx.fillText("売上(万)", 24, m.top - 12);
-  ctx.fillStyle = "#5aa873"; ctx.fillText("利益(万)", 70, m.top - 12);
-  ctx.textAlign = "left";
-  ctx.fillStyle = "#cf8f4a"; ctx.fillText("％", x0 + plotW + 7, m.top - 12);
+  // ベースライン
+  ctx.strokeStyle = "rgba(0,0,0,0.25)";
+  ctx.beginPath(); ctx.moveTo(x0, yB); ctx.lineTo(x0 + plotW, yB); ctx.stroke();
 
-  // 年度（横軸）
-  ctx.fillStyle = "#666666"; ctx.font = "10.5px " + serif; ctx.textAlign = "center"; ctx.textBaseline = "top";
-  TREND.years.forEach((yr, i) => ctx.fillText(yr + "年", xOf(i), yB + 9));
+  const groupW = plotW / G;
+  const groupPad = groupW * 0.16;
+  const innerW = groupW - groupPad;
+  const barW = innerW / S;
+  const maxBarH = plotH * 0.88;  // 上部に数値ラベルの余白
 
-  // 折れ線＋データ点
-  TREND.series.forEach(s => {
-    const yfn = yOf(s);
-    ctx.strokeStyle = s.color; ctx.lineWidth = 2;
-    ctx.beginPath();
-    s.data.forEach((v, i) => { const x = xOf(i), y = yfn(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-    ctx.stroke();
-    s.data.forEach((v, i) => {
-      const x = xOf(i), y = yfn(v);
-      ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.stroke();
+  const fmt = (s, v) => s.scale === "ratio" ? v.toFixed(1) + "%" : Math.round(v) + "万";
+
+  years.forEach((yr, gi) => {
+    const gx = x0 + groupW * gi + groupPad / 2;
+    series.forEach((s, si) => {
+      const v = s.data[gi];
+      const norm = Math.max(0, v) / seriesMax[si];   // 0〜1（負値は0扱い：本データは正）
+      const barH = norm * maxBarH;
+      const bx = gx + barW * si + barW * 0.12;
+      const bw = barW * 0.76;
+      const top = yB - barH;
+      ctx.fillStyle = s.color;
+      ctx.fillRect(bx, top, bw, Math.max(barH, 1));
+      // 数値ラベル（バー上・小さく）
+      if (bw >= 16) {
+        ctx.fillStyle = "#555555";
+        ctx.font = "8.5px " + serif;
+        ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+        ctx.fillText(fmt(s, v), bx + bw / 2, top - 2);
+      }
     });
+    // 年度ラベル
+    ctx.fillStyle = "#666666"; ctx.font = "10.5px " + serif;
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.fillText(yr + "年", gx + innerW / 2, yB + 9);
   });
 }
 
