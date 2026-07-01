@@ -182,9 +182,9 @@
   <!-- CSVアップロード -->
   <div class="upload" id="dropZone">
     <p class="upload-title">CSVファイルをアップロード</p>
-    <label class="ai-btn" for="csvInput" style="display:inline-block;">CSVファイルを選択</label>
-    <input type="file" id="csvInput" accept=".csv,text/csv" hidden>
-    <p class="upload-sub">ここにドラッグ＆ドロップ、またはボタンで選択（列：科目・区分・金額〔・年度〕）。年度列があれば複数年度の推移も反映されます。</p>
+    <label class="ai-btn" for="csvInput" style="display:inline-block;">CSV / Excelファイルを選択</label>
+    <input type="file" id="csvInput" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
+    <p class="upload-sub">CSV または Excel（.xlsx）ファイルをここにドラッグ＆ドロップ、またはボタンで選択（列：科目・区分・金額〔・年度〕）。年度列があれば複数年度の推移も反映されます。</p>
     <p class="upload-status" id="csvStatus"></p>
   </div>
 
@@ -282,10 +282,12 @@
 </div>
 
 <footer>
-  AI財務分析ダッシュボード ／ 単一ファイル・外部ライブラリ不使用<br>
+  AI財務分析ダッシュボード ／ グラフは外部ライブラリ不使用（Excel読込のみ SheetJS を利用）<br>
   制作：大塚　春 ｜ 2026年6月 ｜ GitHub: <a href="https://github.com/harurun0226-art" target="_blank" rel="noopener">https://github.com/harurun0226-art</a>
 </footer>
 
+<!-- Excel読込用ライブラリ（SheetJS・CDN。CSVはライブラリ不要）-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 "use strict";
 
@@ -1086,10 +1088,22 @@ function parseCSVAndApply(text) {
 
   function handleFile(file) {
     if (!file) return;
+    const lower = (file.name || "").toLowerCase();
+    const isExcel = lower.endsWith(".xlsx") || lower.endsWith(".xls");
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        const info = parseCSVAndApply(e.target.result);
+        let csvText;
+        if (isExcel) {
+          // Excel：SheetJSで1枚目のシートをCSV文字列に変換し、CSVと同じ処理に流す
+          if (typeof XLSX === "undefined") throw new Error("SheetJS未読込");
+          const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          csvText = XLSX.utils.sheet_to_csv(sheet);
+        } else {
+          csvText = e.target.result;
+        }
+        const info = parseCSVAndApply(csvText);
         let msg = "データを読み込みました：" + file.name;
         if (info && info.years && info.years.length > 1) {
           msg += `（${info.years.length}年度・最新${info.latest}年を表示）`;
@@ -1100,7 +1114,8 @@ function parseCSVAndApply(text) {
       }
     };
     reader.onerror = () => setStatus("フォーマットエラー：科目・区分・金額の列が必要です", "err");
-    reader.readAsText(file, "UTF-8");
+    if (isExcel) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file, "UTF-8");
   }
 
   input.addEventListener("change", () => { handleFile(input.files[0]); input.value = ""; });
