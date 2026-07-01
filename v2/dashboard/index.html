@@ -146,6 +146,21 @@
   .axis-row .ax-track { display: block; background: rgba(255,255,255,0.06); border-radius: 3px; height: 12px; overflow: hidden; }
   .axis-row .ax-fill { display: block; height: 100%; border-radius: 3px; transition: width .3s; }
   .axis-row .ax-val { text-align: right; font-family: var(--serif); font-variant-numeric: tabular-nums; color: var(--ink); }
+
+  /* ドリルダウン モーダル */
+  .dd-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50; }
+  .dd-overlay[hidden] { display: none; }
+  .dd-modal { position: relative; width: 100%; max-width: 460px; background: var(--panel); border: 1px solid var(--rule2); border-radius: 6px; padding: 22px 24px 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
+  .dd-close { position: absolute; top: 8px; right: 12px; background: none; border: none; color: var(--sub); font-size: 22px; line-height: 1; cursor: pointer; padding: 4px 8px; }
+  .dd-close:hover { color: var(--ink); }
+  .dd-title { font-family: var(--serif); font-size: 17px; color: var(--ink); margin: 0 24px 2px 0; letter-spacing: .04em; }
+  .dd-sub { font-size: 11.5px; color: var(--sub); margin: 0 0 14px; }
+  .dd-rows { display: flex; flex-direction: column; gap: 10px; }
+  .dd-row { display: grid; grid-template-columns: 52px 1fr 112px; align-items: center; gap: 10px; font-size: 12.5px; }
+  .dd-row .dd-year { color: var(--sub); }
+  .dd-row .dd-track { display: block; background: rgba(255,255,255,0.06); border-radius: 3px; height: 14px; overflow: hidden; }
+  .dd-row .dd-fill { display: block; height: 100%; border-radius: 3px; }
+  .dd-row .dd-amt { text-align: right; font-family: var(--serif); font-variant-numeric: tabular-nums; color: var(--ink); }
 </style>
 </head>
 <body>
@@ -237,6 +252,17 @@
   </section>
 
 </div>
+
+<!-- ドリルダウン モーダル（年度付きCSVでバー/ブロックをクリックすると表示）-->
+<div class="dd-overlay" id="ddOverlay" hidden>
+  <div class="dd-modal" role="dialog" aria-modal="true">
+    <button class="dd-close" id="ddClose" aria-label="閉じる">×</button>
+    <h3 class="dd-title" id="ddTitle"></h3>
+    <p class="dd-sub" id="ddSub"></p>
+    <div class="dd-rows" id="ddRows"></div>
+  </div>
+</div>
+
 <footer>
   AI財務分析ダッシュボード ／ 単一ファイル・外部ライブラリ不使用<br>
   制作：大塚　春 ｜ 2026年6月 ｜ GitHub: <a href="https://github.com/harurun0226-art" target="_blank" rel="noopener">https://github.com/harurun0226-art</a>
@@ -289,6 +315,10 @@ const yen = v => (v < 0 ? "−" : "") + "¥" + Math.abs(v).toLocaleString("ja-JP
 const man = v => v === 0 ? "0" : (v / 10000).toLocaleString("ja-JP") + "万";
 const pct = v => (v * 100).toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
 const serifFont = () => getComputedStyle(document.body).getPropertyValue("--serif");
+
+// ドリルダウン用：各グラフのクリック領域と、年度付きCSVの複数年度データ
+const HIT = { plChart: [], bsChart: [], cfChart: [] };
+let MULTIYEAR = null;  // {years:[...], buckets:{年:バケット}}。年度付きCSV読込時のみ設定
 
 // ===== ② KPIカード =====
 function renderKpis() {
@@ -349,8 +379,10 @@ function drawBars(canvasId, legendId, items, cssH) {
   const n = items.length;
   const slot = plotW / n;
   const barW = Math.min(slot * 0.58, 56);
+  HIT[canvasId] = [];  // クリック領域を再構築
   items.forEach((s, i) => {
     const cx = m.left + slot * (i + 0.5);
+    HIT[canvasId].push({ x: m.left + slot * i, y: m.top, w: slot, h: plotH, name: s.name });
     const x = cx - barW / 2;
     const yTop = yOf(Math.max(s.value, 0));
     const yBot = yOf(Math.min(s.value, 0));
@@ -448,6 +480,7 @@ function drawBS(canvasId, legendId, cssH) {
       const h = b.value * scale;
       ctx.fillStyle = b.color;
       ctx.fillRect(x, y, colW, h);
+      HIT["bsChart"].push({ x, y, w: colW, h: Math.max(h, 1), name: b.name });
 
       const cx = x + colW / 2, cy = y + h / 2;
       const lum = parseInt(b.color.slice(1,3),16)*0.299 + parseInt(b.color.slice(3,5),16)*0.587 + parseInt(b.color.slice(5,7),16)*0.114;
@@ -478,6 +511,7 @@ function drawBS(canvasId, legendId, cssH) {
     }
     ctx.setLineDash([]); // 破線設定をリセット（他の描画に影響させない）
   }
+  HIT["bsChart"] = [];  // クリック領域を再構築
   column(leftX, BS_LEFT);
   column(rightX, BS_RIGHT);
 
@@ -729,6 +763,7 @@ function drawAll() {
   drawBars("cfChart", "cfLegend", CF, 300);
   drawRadar("radarChart", RADAR, 340);
   drawTrend("trendChart", 320);
+  updateDrillCursor();
 }
 // 系列データの再構築（CSV読込で再計算した値を各グラフ配列へ反映）
 function rebuildSeries() {
@@ -937,7 +972,8 @@ function parseCSVAndApply(text) {
     .map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
 
   if (yearsNum.length === 0) {
-    // 後方互換：年度なし＝単年データ。トレンドは現状維持
+    // 後方互換：年度なし＝単年データ。トレンドは現状維持、ドリルダウンは無効
+    MULTIYEAR = null;
     Object.assign(D, buckets["__single__"]);
     refresh();
     return { years: [] };
@@ -945,6 +981,7 @@ function parseCSVAndApply(text) {
 
   // 複数年度：最新年度を主要グラフ(PL/BS/CF/KPI/レーダー/総合評価)へ、全年度をトレンドへ
   const latest = yearsNum[yearsNum.length - 1];
+  MULTIYEAR = { years: yearsNum, buckets };  // ドリルダウン用に全年度データを保持
   Object.assign(D, buckets[String(latest)]);
   applyTrend(yearsNum, buckets);
   refresh();  // refresh内のdrawAllで複数年度比較グラフも再描画される
@@ -985,6 +1022,85 @@ function parseCSVAndApply(text) {
     zone.classList.remove("drag");
     if (e.dataTransfer && e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
   });
+})();
+
+// ===== ドリルダウン（PL/BS/CFのバー・ブロックをクリック → 複数年度推移をモーダル表示）=====
+// 科目名→年度バケットの値を算出（PLは各段階の派生値、BS/CFは科目値）。すべて円。
+function itemValue(name, b) {
+  const op = (b.sales - b.cogs) - (b.salary + b.ad + b.rent);
+  const ord = op + b.nonopRev - b.nonopExp;
+  const pre = ord + b.special;
+  switch (name) {
+    case "売上高": return b.sales;
+    case "売上総利益": return b.sales - b.cogs;
+    case "営業利益": return op;
+    case "経常利益": return ord;
+    case "税引前利益": return pre;
+    case "当期純利益": return pre - b.tax;
+    case "流動資産": return b.currentAssets;
+    case "固定資産": return b.fixedAssets;
+    case "流動負債": return b.currentLiab;
+    case "固定負債": return b.fixedLiab;
+    case "純資産": return b.equity;
+    case "営業CF": return b.cfOp;
+    case "投資CF": return b.cfInv;
+    case "財務CF": return b.cfFin;
+    case "現金増減": return b.cfOp + b.cfInv + b.cfFin;
+    default: return null;
+  }
+}
+
+// 年度付きCSVのときだけ該当グラフにポインタカーソルを付ける
+function updateDrillCursor() {
+  ["plChart", "bsChart", "cfChart"].forEach(id => {
+    const c = document.getElementById(id);
+    if (c) c.style.cursor = MULTIYEAR ? "pointer" : "default";
+  });
+}
+
+// 指定科目の複数年度推移（最大5期）をモーダルに表示
+function openDrilldown(name) {
+  if (!MULTIYEAR) return;                          // 年度付きCSVのときのみ動作
+  const yrs = MULTIYEAR.years.slice(-5);           // 最大5期（直近）
+  const rows = yrs
+    .map(y => ({ year: y, value: itemValue(name, MULTIYEAR.buckets[String(y)]) }))
+    .filter(r => r.value !== null);
+  if (!rows.length) return;
+  const maxAbs = Math.max(...rows.map(r => Math.abs(r.value)), 1);
+  document.getElementById("ddTitle").textContent = name + " の推移";
+  document.getElementById("ddSub").textContent = rows.length + "期分（単位：円）";
+  document.getElementById("ddRows").innerHTML = rows.map(r => {
+    const w = (Math.abs(r.value) / maxAbs * 100).toFixed(1);
+    const col = r.value >= 0 ? "var(--pos)" : "var(--neg)";
+    return `<div class="dd-row">` +
+      `<span class="dd-year">${r.year}年</span>` +
+      `<span class="dd-track"><span class="dd-fill" style="width:${w}%;background:${col}"></span></span>` +
+      `<span class="dd-amt">${yen(r.value)}</span></div>`;
+  }).join("");
+  document.getElementById("ddOverlay").hidden = false;
+}
+
+function closeDrilldown() { document.getElementById("ddOverlay").hidden = true; }
+
+(function setupDrilldown() {
+  ["plChart", "bsChart", "cfChart"].forEach(id => {
+    const c = document.getElementById(id);
+    if (!c) return;
+    c.addEventListener("click", e => {
+      if (!MULTIYEAR) return;                       // 単年CSV/初期状態は何もしない
+      const rect = c.getBoundingClientRect();
+      const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      const regions = HIT[id] || [];
+      for (const r of regions) {
+        if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) { openDrilldown(r.name); break; }
+      }
+    });
+  });
+  document.getElementById("ddClose").addEventListener("click", closeDrilldown);
+  document.getElementById("ddOverlay").addEventListener("click", e => {
+    if (e.target.id === "ddOverlay") closeDrilldown();   // 背景クリックで閉じる
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrilldown(); });
 })();
 </script>
 </body>
