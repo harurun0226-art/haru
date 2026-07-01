@@ -98,6 +98,9 @@
   table.score td:first-child { color: var(--ink); }
   table.score tbody tr:not(.total):nth-child(odd) td { background: rgba(255,255,255,0.02); }
   table.score tr.total td { font-weight: 700; font-size: 14px; border-top: 2px solid var(--rule2); color: var(--ink); background: rgba(143,180,214,0.10); }
+  /* 列区切り：自社の数値｜自社スコア=点線、自社スコア｜製造業平均=実線 */
+  table.score th:nth-child(3), table.score td:nth-child(3) { border-left: 1px dotted var(--rule2); }
+  table.score th:nth-child(4), table.score td:nth-child(4) { border-left: 1px solid var(--rule2); }
 
   /* AI分析サマリー */
   .ai-btn {
@@ -223,7 +226,7 @@
       </div>
       <div>
         <table class="score">
-          <thead><tr><th>評価軸（指標）</th><th class="num">自社の数値</th><th class="num">自社</th><th class="num">製造業平均</th></tr></thead>
+          <thead><tr><th>評価軸（指標）</th><th class="num">自社の数値</th><th class="num">自社スコア</th><th class="num">製造業平均</th></tr></thead>
           <tbody id="radarTable"></tbody>
         </table>
         <p class="desc" style="margin-top:10px;">スコアは各軸25点満点（自社は目安値換算：収益性10%・安全性50%・成長性20%・効率性1.5回・耐性200%＝各25点、上限25点）。製造業平均は業界目安の固定値。</p>
