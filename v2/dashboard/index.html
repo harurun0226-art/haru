@@ -215,6 +215,14 @@
     </section>
   </div>
 
+  <!-- ⑤ 複数年度比較（TRENDをRADARの上に配置）-->
+  <section class="card" style="margin-top:16px;">
+    <h2><span class="no">TREND</span> 複数年度比較グラフ</h2>
+    <p class="desc">4項目を独立した小グラフに分けて2×2で表示するスモールマルチプル。各グラフはX軸＝年度・Y軸＝実数値（棒）、タイトルに科目名と単位、色は年度を表します（売上高・営業利益・当期純利益＝万円／自己資本比率＝％）。</p>
+    <canvas id="trendChart"></canvas>
+    <div class="legend" id="trendLegend"></div>
+  </section>
+
   <!-- ④ レーダーチャート -->
   <section class="card" style="margin-top:16px;">
     <h2><span class="no">RADAR</span> 財務分析レーダーチャート</h2>
@@ -250,14 +258,6 @@
 
     <!-- 財務分析総合評価 -->
     <div class="grade-wrap" id="gradeWrap"></div>
-  </section>
-
-  <!-- ⑤ 複数年度比較 -->
-  <section class="card" style="margin-top:16px;">
-    <h2><span class="no">TREND</span> 複数年度比較グラフ</h2>
-    <p class="desc">4項目を独立した小グラフに分けて2×2で表示するスモールマルチプル。各グラフはX軸＝年度・Y軸＝実数値（棒）、タイトルに科目名と単位、色は年度を表します（売上高・営業利益・当期純利益＝万円／自己資本比率＝％）。</p>
-    <canvas id="trendChart"></canvas>
-    <div class="legend" id="trendLegend"></div>
   </section>
 
   <!-- ⑥ AI分析サマリー -->
