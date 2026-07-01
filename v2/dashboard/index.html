@@ -1067,15 +1067,17 @@ function openDrilldown(name) {
     .filter(r => r.value !== null);
   if (!rows.length) return;
   const maxAbs = Math.max(...rows.map(r => Math.abs(r.value)), 1);
+  // 万円表記（例：−300,000 → −30万円）
+  const manYen = v => (v < 0 ? "−" : "") + (Math.abs(v) / 10000).toLocaleString("ja-JP") + "万円";
   document.getElementById("ddTitle").textContent = name + " の推移";
-  document.getElementById("ddSub").textContent = rows.length + "期分（単位：円）";
+  document.getElementById("ddSub").textContent = rows.length + "期分（単位：万円）";
   document.getElementById("ddRows").innerHTML = rows.map(r => {
     const w = (Math.abs(r.value) / maxAbs * 100).toFixed(1);
     const col = r.value >= 0 ? "var(--pos)" : "var(--neg)";
     return `<div class="dd-row">` +
       `<span class="dd-year">${r.year}年</span>` +
       `<span class="dd-track"><span class="dd-fill" style="width:${w}%;background:${col}"></span></span>` +
-      `<span class="dd-amt">${yen(r.value)}</span></div>`;
+      `<span class="dd-amt">${manYen(r.value)}</span></div>`;
   }).join("");
   document.getElementById("ddOverlay").hidden = false;
 }
